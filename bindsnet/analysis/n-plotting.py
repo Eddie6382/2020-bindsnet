@@ -25,7 +25,6 @@ def plot_input(
     # language=rst
     """
     Plots a two-dimensional image and its corresponding spike-train representation.
-
     :param image: A 2D array of floats depicting an input image.
     :param inpt: A 2D array of floats depicting an image's spike-train encoding.
     :param label: Class label of the input data.
@@ -55,7 +54,7 @@ def plot_input(
             ax.set_xticks(())
             ax.set_yticks(())
 
-        fig.tight_layout()
+        #fig.tight_layout()
     else:
         if label is not None:
             axes[0].set_title("Current image (label = %d)" % label)
@@ -77,7 +76,6 @@ def plot_spikes(
     # language=rst
     """
     Plot spikes for any group(s) of neurons.
-
     :param spikes: Mapping from layer names to spiking data. Spike data has shape
         ``[time, n_1, ..., n_k]``, where ``[n_1, ..., n_k]`` is the shape of the
         recorded layer.
@@ -169,7 +167,7 @@ def plot_spikes(
                 "%s spikes for neurons (%d - %d) from t = %d to %d " % args
             )
 
-    plt.draw()
+    #plt.draw()
 
     return ims, axes
 
@@ -182,11 +180,11 @@ def plot_weights(
     figsize: Tuple[int, int] = (5, 5),
     cmap: str = "hot_r",
     save: Optional[str] = None,
+    step: Optional[int] = 0,
 ) -> AxesImage:
     # language=rst
     """
     Plot a connection weight matrix.
-
     :param weights: Weight matrix of ``Connection`` object.
     :param wmin: Minimum allowed weight value.
     :param wmax: Maximum allowed weight value.
@@ -197,7 +195,7 @@ def plot_weights(
     :return: ``AxesImage`` for re-drawing the weights plot.
     """
     local_weights = weights.detach().clone().cpu().numpy()
-    if save is not None:
+    if save is not None :
         plt.ioff()
 
         fig, ax = plt.subplots(figsize=figsize)
@@ -256,7 +254,6 @@ def plot_conv2d_weights(
     # language=rst
     """
     Plot a connection weight matrix of a Conv2dConnection.
-
     :param weights: Weight matrix of Conv2dConnection object.
     :param wmin: Minimum allowed weight value.
     :param wmax: Maximum allowed weight value.
@@ -317,7 +314,6 @@ def plot_locally_connected_weights(
     """
     Plot a connection weight matrix of a :code:`Connection` with `locally connected
     structure <http://yann.lecun.com/exdb/publis/pdf/gregor-nips-11.pdf>_.
-
     :param weights: Weight matrix of Conv2dConnection object.
     :param n_filters: No. of convolution kernels in use.
     :param kernel_size: Side length(s) of 2D convolution kernels.
@@ -387,7 +383,6 @@ def plot_assignments(
     # language=rst
     """
     Plot the two-dimensional neuron assignments.
-
     :param assignments: Vector of neuron label assignments.
     :param im: Used for re-drawing the assignments plot.
     :param figsize: Horizontal, vertical figure size in inches.
@@ -469,13 +464,10 @@ def plot_performance(
     ax: Optional[Axes] = None,
     figsize: Tuple[int, int] = (7, 4),
     save: Optional[str] = None,
-    period: int = 1,
-    interval: int = 10,
 ) -> Axes:
     # language=rst
     """
     Plot training accuracy curves.
-
     :param performances: Lists of training accuracy estimates per voting scheme.
     :param ax: Used for re-drawing the performance plot.
     :param figsize: Horizontal, vertical figure size in inches.
@@ -489,16 +481,16 @@ def plot_performance(
 
         for scheme in performances:
             ax.plot(
-                np.arange(0, len(performances[scheme])*period/1000, period/1000),
-                np.array(performances[scheme]),
+                range(len(performances[scheme])),
+                [p for p in performances[scheme]],
                 label=scheme,
             )
 
         ax.set_ylim([0, 100])
         ax.set_title("Estimated classification accuracy")
-        ax.set_xlabel("No. of examples in thousands")
-        ax.set_ylabel("Training Accuracy")
-        ax.set_xticks((np.arange(0,200,20)))
+        ax.set_xlabel("No. of examples")
+        ax.set_ylabel("Accuracy")
+        ax.set_xticks((np.arange(0,500,50)))
         ax.set_yticks(range(0, 110, 10))
         ax.legend()
 
@@ -539,12 +531,10 @@ def plot_voltages(
     plot_type: str = "color",
     thresholds: Dict[str, torch.Tensor] = None,
     figsize: Tuple[float, float] = (8.0, 4.5),
-    save: Optional[str] = None,
 ) -> Tuple[List[AxesImage], List[Axes]]:
     # language=rst
     """
     Plot voltages for any group(s) of neurons.
-
     :param voltages: Contains voltage data by neuron layers.
     :param ims: Used for re-drawing the plots.
     :param axes: Used for re-drawing the plots.
@@ -677,8 +667,6 @@ def plot_voltages(
             plt.setp(axes, xlabel="Simulation time", ylabel="Voltage")
 
         plt.tight_layout()
-        if save is not None:
-            plt.savefig(save, bbox_inches="tight")
 
     else:
         # Plotting figure given
@@ -757,7 +745,5 @@ def plot_voltages(
             plt.setp(axes, xlabel="Simulation time", ylabel="Voltage")
 
         plt.tight_layout()
-        if save is not None:
-            plt.savefig(save, bbox_inches="tight")
 
     return ims, axes
