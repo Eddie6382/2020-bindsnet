@@ -300,6 +300,7 @@ class Network(torch.nn.Module):
         unclamps = kwargs.get("unclamp", {})
         masks = kwargs.get("masks", {})
         injects_v = kwargs.get("injects_v", {})
+        name = kwargs.get("name", None)
 
         # Compute reward.
         if self.reward_fn is not None:
@@ -362,18 +363,28 @@ class Network(torch.nn.Module):
                 # Clamp neurons to spike.
                 clamp = clamps.get(l, None)
                 if clamp is not None:
-                    if clamp.ndimension() == 1:
-                        self.layers[l].s[:, clamp] = 1
-                    else:
-                        self.layers[l].s[:, clamp[t]] = 1
+                    if name == None:
+                            raise Exception("Layer Name id Needed!!")
+                    elif l in name:
+                        if clamp.ndimension() == 1:
+                            self.layers[l].s[:, clamp] = 1
+                        else:
+                            self.layers[l].s[:, clamp[t]] = 1
 
                 # Clamp neurons not to spike.
-                unclamp = unclamps.get(l, None)
+                unclamp = unclamps.get(1, None)
+                a = unclamps.get(1, None)
                 if unclamp is not None:
-                    if unclamp.ndimension() == 1:
-                        self.layers[l].s[:, unclamp] = 0
-                    else:
-                        self.layers[l].s[:, unclamp[t]] = 0
+                    if name == None:
+                        raise Exception("Layer Name id Needed!!")
+                    elif l in name:
+                        if unclamp.ndimension() == 1:
+                            # print(l)
+                            # print(self.layers[l].s.shape)
+                            self.layers[l].s[:, unclamp] = 0
+                            # assert(1 == 2)
+                        else:
+                            self.layers[l].s[:, unclamp[t]] = 0
 
                 # Inject voltage to neurons.
                 inject_v = injects_v.get(l, None)
