@@ -24,6 +24,7 @@ Unfired neurons: [353  27  87 316 386 354 301   0 344 320 285 115  69 323 396 38
 - 400 neurons with 200 neurons unfired
     77%, 77%
 - 200 neurons
-    
+    78%, 79%
+
 
 
