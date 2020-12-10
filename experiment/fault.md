@@ -1,4 +1,5 @@
-We insert fault on neuron by calmp them not to spike during training process and testing process (the same neurons being clamped).  
+We insert fault on neuron by calmp them not to spike during training process and testing process (the same neurons being clamped). 
+## Fault on excitory layer
 ### parameter
 unclamp (force to 0) : 0, 40, 80, 120, 160, 200
 ```python
@@ -25,6 +26,21 @@ Unfired neurons: [353  27  87 316 386 354 301   0 344 320 285 115  69 323 396 38
     77%, 77%
 - 200 neurons
     78%, 79%
+    
+## Fault on inhibitory accuracy
+### parameter
+the same as above
+### performance of testing accuracy
+| unclamp neurons | all_activity | weight_proportion |
+| -------- | -------- | -------- |
+| 0     | 88%     | 88%     |
+| 40    | 86%     | 87%     |
+| 80    | 84%     | 84%     |
+| 120   | %     | %     |
+| 160   | %     | %     |
+| 200   | 67%     | 67%     |
+
+
 
 
 
