@@ -28,12 +28,12 @@ from bindsnet.analysis.plotting import (
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--n_neurons", type=int, default=100)
-parser.add_argument("--batch_size", type=int, default=32)
+parser.add_argument("--batch_size", type=int, default=64)
 parser.add_argument("--n_epochs", type=int, default=1)
 parser.add_argument("--n_test", type=int, default=10000)
 parser.add_argument("--n_train", type=int, default=60000)
 parser.add_argument("--n_workers", type=int, default=-1)
-parser.add_argument("--update_steps", type=int, default=256)
+parser.add_argument("--update_steps", type=int, default=512)
 parser.add_argument("--exc", type=float, default=22.5)
 parser.add_argument("--inh", type=float, default=120)
 parser.add_argument("--theta_plus", type=float, default=0.05)
@@ -45,7 +45,9 @@ parser.add_argument("--train", dest="train", action="store_true")
 parser.add_argument("--test", dest="train", action="store_false")
 parser.add_argument("--plot", dest="plot", action="store_true")
 parser.add_argument("--gpu", dest="gpu", action="store_true")
-parser.set_defaults(plot=True, gpu=False)
+parser.add_argument("--clamp", type=float, default=0)
+parser.add_argument("--unclamp", type=float, default=0)
+parser.set_defaults(plot=False, gpu=False)
 
 args = parser.parse_args()
 
@@ -67,6 +69,8 @@ progress_interval = args.progress_interval
 train = args.train
 plot = args.plot
 gpu = args.gpu
+clamp = args.clamp
+unclamp = args.unclamp
 
 update_interval = update_steps * batch_size
 
@@ -121,9 +125,31 @@ dataset = MNIST(
 
 # Neuron assignments and spike proportions.
 n_classes = 10
+n_classes = torch.tensor(n_classes,device=device)
 assignments = -torch.ones(n_neurons, device=device)
 proportions = torch.zeros((n_neurons, n_classes), device=device)
 rates = torch.zeros((n_neurons, n_classes), device=device)
+
+# Masking
+clamp_type, inh_layer = "", {"Ae"}
+dict_idx = dict()
+if clamp > 0:
+    mask = np.random.choice(n_neurons, int(n_neurons * clamp), replace=False)
+    print("Always fired neurons:", mask)
+    c_mask = np.setdiff1d(np.arange(n_neurons), mask)
+    dict_idx[1] = torch.from_numpy(mask)
+    dict_idx[0] = torch.from_numpy(c_mask)
+    clamp_type = "clamp"
+elif unclamp > 0:
+    mask = np.random.choice(n_neurons, int(n_neurons * unclamp), replace=False)
+    print("Unfired neurons:", mask)
+    c_mask = np.setdiff1d(np.arange(n_neurons), mask)
+    dict_idx[1] = torch.from_numpy(mask)
+    dict_idx[0] = torch.from_numpy(c_mask)
+    clamp_type = "unclamp"
+
+#dropout_rate
+dr_rate = 0.5
 
 # Sequence of accuracy estimates.
 accuracy = {"all": [], "proportion": []}
@@ -159,6 +185,7 @@ voltage_axes, voltage_ims = None, None
 spike_record = torch.zeros((update_interval, int(time / dt), n_neurons), device=device)
 
 # Train the network.
+inc = int(n_train/batch_size)
 print("\nBegin training.\n")
 start = t()
 
@@ -185,7 +212,8 @@ for epoch in range(n_epochs):
         inputs = {"X": batch["encoded_image"]}
         if gpu:
             inputs = {k: v.cuda() for k, v in inputs.items()}
-
+        
+        
         if step % update_steps == 0 and step > 0:
             # Convert the array of labels into a tensor
             label_tensor = torch.tensor(labels, device=device)
@@ -194,22 +222,29 @@ for epoch in range(n_epochs):
             all_activity_pred = all_activity(
                 spikes=spike_record, assignments=assignments, n_labels=n_classes
             )
+            
+            #print(spike_record.is_cuda)
+            #print(n_classes.is_cuda)
+            #print(proportions.is_cuda)
             proportion_pred = proportion_weighting(
                 spikes=spike_record,
                 assignments=assignments,
                 proportions=proportions,
                 n_labels=n_classes,
             )
-
+            #print(proportion_pred.is_cuda)
+            
             # Compute network accuracy according to available classification strategies.
             accuracy["all"].append(
                 100
-                * torch.sum(label_tensor.long() == all_activity_pred).item()
+                * torch.sum(label_tensor.long() == all_activity_pred.to(device)).item()
                 / len(label_tensor)
             )
+           
+            
             accuracy["proportion"].append(
                 100
-                * torch.sum(label_tensor.long() == proportion_pred).item()
+                * torch.sum(label_tensor.long() == proportion_pred.to(device)).item()
                 / len(label_tensor)
             )
 
@@ -240,12 +275,25 @@ for epoch in range(n_epochs):
             )
 
             labels = []
-
+            
+        
+        
+        
+        mask_e = torch.zeros(n_neurons,device = "cuda")
+        
+        mask_np = np.random.choice(a=n_neurons, size = int(n_neurons * dr_rate),replace = False)
+        for i in range(n_neurons):
+            if i in mask_np:
+                mask_e[i]= 1
+        mask_i = mask_e.expand(784,n_neurons)
+        mask_e = torch.diag(mask_e)
+        #print(mask_e.bool())
+        masks = {("Ae","Ai"):mask_e.bool()}
+        #print(masks)
         labels.extend(batch["label"].tolist())
-
         # Run the network on the input.
-        network.run(inputs=inputs, time=time, input_time_dim=1)
-
+        network.run(inputs=inputs, time=time, input_time_dim=1, massk = masks,one_step=True, train = True)
+        #del mask_i,mask_e
         # Add to spikes recording.
         s = spikes["Ae"].get("s").permute((1, 0, 2))
         spike_record[
@@ -259,7 +307,7 @@ for epoch in range(n_epochs):
         inh_voltages = inh_voltage_monitor.get("v")
 
         # Optionally plot various simulation information.
-        if plot:
+        if plot and step > 0 and step % update_steps == 0:
             image = batch["image"][:, 0].view(28, 28)
             inpt = inputs["X"][:, 0].view(time, 784).sum(0).view(28, 28)
             input_exc_weights = network.connections[("X", "Ae")].w
@@ -272,23 +320,21 @@ for epoch in range(n_epochs):
             }
             voltages = {"Ae": exc_voltages, "Ai": inh_voltages}
 
-            inpt_axes, inpt_ims = plot_input(
-                image, inpt, label=labels[step], axes=inpt_axes, ims=inpt_ims
-            )
+            #inpt_axes, inpt_ims = plot_input(
+            #    image, inpt, label=labels[step % update_steps], axes=inpt_axes, ims=inpt_ims
+            #)
             spike_ims, spike_axes = plot_spikes(spikes_, ims=spike_ims, axes=spike_axes)
-            weights_im = plot_weights(square_weights, im=weights_im)
-            assigns_im = plot_assignments(square_assignments, im=assigns_im)
-            perf_ax = plot_performance(accuracy, ax=perf_ax)
+            #weights_im = plot_weights(square_weights, im=weights_im, )
+            #assigns_im = plot_assignments(square_assignments, im=assigns_im, )
+            #perf_ax = plot_performance(accuracy, ax=perf_ax, )
             voltage_ims, voltage_axes = plot_voltages(
-                voltages, ims=voltage_ims, axes=voltage_axes, plot_type="line"
+                voltages, ims=voltage_ims, axes=voltage_axes, plot_type="line",
             )
 
             plt.pause(1e-8)
 
         network.reset_state_variables()  # Reset state variables.
-
-        if step % update_steps == 0 and step > 0:
-            break
+       
 
 print("Progress: %d / %d (%.4f seconds)" % (epoch + 1, n_epochs, t() - start))
 print("Training complete.\n")
@@ -332,7 +378,7 @@ for step, batch in enumerate(test_dataset):
         inputs = {k: v.cuda() for k, v in inputs.items()}
 
     # Run the network on the input.
-    network.run(inputs=inputs, time=time, input_time_dim=1)
+    network.run(inputs=inputs, time=time, input_time_dim=1, **{clamp_type: dict_idx}, name="Ae",train = False,dr = dr_rate)
 
     # Add to spikes recording.
     spike_record = spikes["Ae"].get("s").permute((1, 0, 2))
@@ -352,9 +398,9 @@ for step, batch in enumerate(test_dataset):
     )
 
     # Compute network accuracy according to available classification strategies.
-    accuracy["all"] += float(torch.sum(label_tensor.long() == all_activity_pred).item())
+    accuracy["all"] += float(torch.sum(label_tensor.long() == all_activity_pred.to(device)).item())
     accuracy["proportion"] += float(
-        torch.sum(label_tensor.long() == proportion_pred).item()
+        torch.sum(label_tensor.long() == proportion_pred.to(device)).item()
     )
 
     network.reset_state_variables()  # Reset state variables.

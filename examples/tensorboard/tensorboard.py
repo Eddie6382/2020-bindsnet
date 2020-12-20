@@ -27,7 +27,7 @@ parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--time", type=int, default=50)
 parser.add_argument("--dt", type=int, default=1.0)
 parser.add_argument("--tensorboard", dest="tensorboard", action="store_true")
-parser.set_defaults(plot=False, gpu=False, train=True)
+parser.set_defaults(plot=False, gpu=True, train=True)
 
 args = parser.parse_args()
 
