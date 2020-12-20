@@ -125,6 +125,7 @@ dataset = MNIST(
 
 # Neuron assignments and spike proportions.
 n_classes = 10
+n_classes = torch.tensor(n_classes,device=device)
 assignments = -torch.ones(n_neurons, device=device)
 proportions = torch.zeros((n_neurons, n_classes), device=device)
 rates = torch.zeros((n_neurons, n_classes), device=device)
@@ -147,7 +148,8 @@ elif unclamp > 0:
     dict_idx[0] = torch.from_numpy(c_mask)
     clamp_type = "unclamp"
 
-
+#dropout_rate
+dr_rate = 0.5
 
 # Sequence of accuracy estimates.
 accuracy = {"all": [], "proportion": []}
@@ -210,7 +212,8 @@ for epoch in range(n_epochs):
         inputs = {"X": batch["encoded_image"]}
         if gpu:
             inputs = {k: v.cuda() for k, v in inputs.items()}
-
+        
+        
         if step % update_steps == 0 and step > 0:
             # Convert the array of labels into a tensor
             label_tensor = torch.tensor(labels, device=device)
@@ -219,22 +222,29 @@ for epoch in range(n_epochs):
             all_activity_pred = all_activity(
                 spikes=spike_record, assignments=assignments, n_labels=n_classes
             )
+            
+            #print(spike_record.is_cuda)
+            #print(n_classes.is_cuda)
+            #print(proportions.is_cuda)
             proportion_pred = proportion_weighting(
                 spikes=spike_record,
                 assignments=assignments,
                 proportions=proportions,
                 n_labels=n_classes,
             )
-
+            #print(proportion_pred.is_cuda)
+            
             # Compute network accuracy according to available classification strategies.
             accuracy["all"].append(
                 100
-                * torch.sum(label_tensor.long() == all_activity_pred).item()
+                * torch.sum(label_tensor.long() == all_activity_pred.to(device)).item()
                 / len(label_tensor)
             )
+           
+            
             accuracy["proportion"].append(
                 100
-                * torch.sum(label_tensor.long() == proportion_pred).item()
+                * torch.sum(label_tensor.long() == proportion_pred.to(device)).item()
                 / len(label_tensor)
             )
 
@@ -265,12 +275,25 @@ for epoch in range(n_epochs):
             )
 
             labels = []
-
+            
+        
+        
+        
+        mask_e = torch.zeros(n_neurons,device = "cuda")
+        
+        mask_np = np.random.choice(a=n_neurons, size = int(n_neurons * dr_rate),replace = False)
+        for i in range(n_neurons):
+            if i in mask_np:
+                mask_e[i]= 1
+        mask_i = mask_e.expand(784,n_neurons)
+        mask_e = torch.diag(mask_e)
+        #print(mask_e.bool())
+        masks = {("Ae","Ai"):mask_e.bool()}
+        #print(masks)
         labels.extend(batch["label"].tolist())
-
         # Run the network on the input.
-        network.run(inputs=inputs, time=time, input_time_dim=1, **{clamp_type: dict_idx}, name="Ae")
-
+        network.run(inputs=inputs, time=time, input_time_dim=1, massk = masks,one_step=True, train = True)
+        #del mask_i,mask_e
         # Add to spikes recording.
         s = spikes["Ae"].get("s").permute((1, 0, 2))
         spike_record[
@@ -297,20 +320,21 @@ for epoch in range(n_epochs):
             }
             voltages = {"Ae": exc_voltages, "Ai": inh_voltages}
 
-            inpt_axes, inpt_ims = plot_input(
-                image, inpt, label=labels[step % update_steps], axes=inpt_axes, ims=inpt_ims
-            )
+            #inpt_axes, inpt_ims = plot_input(
+            #    image, inpt, label=labels[step % update_steps], axes=inpt_axes, ims=inpt_ims
+            #)
             spike_ims, spike_axes = plot_spikes(spikes_, ims=spike_ims, axes=spike_axes)
-            weights_im = plot_weights(square_weights, im=weights_im, save="plots/weights/weights{}.png".format(step + epoch*inc))
-            assigns_im = plot_assignments(square_assignments, im=assigns_im, save="plots/assignments/assign{}.png".format(step + epoch*inc))
-            perf_ax = plot_performance(accuracy, ax=perf_ax, save="plots/performance/train_acc.png", period=batch_size*update_steps, interval=20)
+            #weights_im = plot_weights(square_weights, im=weights_im, )
+            #assigns_im = plot_assignments(square_assignments, im=assigns_im, )
+            #perf_ax = plot_performance(accuracy, ax=perf_ax, )
             voltage_ims, voltage_axes = plot_voltages(
-                voltages, ims=voltage_ims, axes=voltage_axes, plot_type="line", save="plots/voltages/vol.png",
+                voltages, ims=voltage_ims, axes=voltage_axes, plot_type="line",
             )
 
             plt.pause(1e-8)
 
         network.reset_state_variables()  # Reset state variables.
+       
 
 print("Progress: %d / %d (%.4f seconds)" % (epoch + 1, n_epochs, t() - start))
 print("Training complete.\n")
@@ -354,7 +378,7 @@ for step, batch in enumerate(test_dataset):
         inputs = {k: v.cuda() for k, v in inputs.items()}
 
     # Run the network on the input.
-    network.run(inputs=inputs, time=time, input_time_dim=1, **{clamp_type: dict_idx}, name="Ae")
+    network.run(inputs=inputs, time=time, input_time_dim=1, **{clamp_type: dict_idx}, name="Ae",train = False,dr = dr_rate)
 
     # Add to spikes recording.
     spike_record = spikes["Ae"].get("s").permute((1, 0, 2))
@@ -374,9 +398,9 @@ for step, batch in enumerate(test_dataset):
     )
 
     # Compute network accuracy according to available classification strategies.
-    accuracy["all"] += float(torch.sum(label_tensor.long() == all_activity_pred).item())
+    accuracy["all"] += float(torch.sum(label_tensor.long() == all_activity_pred.to(device)).item())
     accuracy["proportion"] += float(
-        torch.sum(label_tensor.long() == proportion_pred).item()
+        torch.sum(label_tensor.long() == proportion_pred.to(device)).item()
     )
 
     network.reset_state_variables()  # Reset state variables.

@@ -197,7 +197,7 @@ class Network(torch.nn.Module):
         # language=rst
         """
         Returns a cloned network object.
-
+        
         :return: A copy of this network.
         """
         virtual_file = tempfile.SpooledTemporaryFile()
@@ -205,7 +205,7 @@ class Network(torch.nn.Module):
         virtual_file.seek(0)
         return torch.load(virtual_file)
 
-    def _get_inputs(self, layers: Iterable = None) -> Dict[str, torch.Tensor]:
+    def _get_inputs(self, layers: Iterable = None,training = True,dr=0,mask :Dict = {}) -> Dict[str, torch.Tensor]:
         # language=rst
         """
         Fetches outputs from network layers to use as input to downstream layers.
@@ -229,14 +229,15 @@ class Network(torch.nn.Module):
                     inputs[c[1]] = torch.zeros(
                         self.batch_size, *target.shape, device=target.s.device
                     )
-
+                #print("1")
                 # Add to input: source's spikes multiplied by connection weights.
-                inputs[c[1]] += self.connections[c].compute(source.s)
-
+                inputs[c[1]] += self.connections[c].compute(source.s,mask = mask.get(c,torch.zeros_like(self.connections[c].w,device = "cuda").bool()),training = training,dr=dr)
+                
+        #print("3")
         return inputs
 
     def run(
-        self, inputs: Dict[str, torch.Tensor], time: int, one_step=False, **kwargs
+        self, inputs: Dict[str, torch.Tensor], time: int, one_step=False, training = True,dr = 0,massk = {}, **kwargs
     ) -> None:
         # language=rst
         """
@@ -301,7 +302,6 @@ class Network(torch.nn.Module):
         masks = kwargs.get("masks", {})
         injects_v = kwargs.get("injects_v", {})
         name = kwargs.get("name", None)
-
         # Compute reward.
         if self.reward_fn is not None:
             kwargs["reward"] = self.reward_fn.compute(**kwargs)
@@ -335,7 +335,7 @@ class Network(torch.nn.Module):
 
         # Effective number of timesteps.
         timesteps = int(time / self.dt)
-
+        #print(timesteps)
         # Simulate network activity for `time` timesteps.
         for t in range(timesteps):
             # Get input to all layers (synchronous mode).
@@ -353,12 +353,9 @@ class Network(torch.nn.Module):
 
                 if one_step:
                     # Get input to this layer (one-step mode).
-                    current_inputs.update(self._get_inputs(layers=[l]))
+                    current_inputs.update(self._get_inputs(layers=[l],mask =massk,training=training,dr=dr))
 
-                if l in current_inputs:
-                    self.layers[l].forward(x=current_inputs[l])
-                else:
-                    self.layers[l].forward(x=torch.zeros(self.layers[l].s.shape))
+                self.layers[l].forward(x=current_inputs[l])
 
                 # Clamp neurons to spike.
                 clamp = clamps.get(l, None)
@@ -399,9 +396,9 @@ class Network(torch.nn.Module):
                 self.connections[c].update(
                     mask=masks.get(c, None), learning=self.learning, **kwargs
                 )
-
-            # # Get input to all layers.
-            # current_inputs.update(self._get_inputs())
+                #print("1")
+            # Get input to all layers.
+            current_inputs.update(self._get_inputs(mask = massk,training=training,dr = dr))
 
             # Record state variables of interest.
             for m in self.monitors:

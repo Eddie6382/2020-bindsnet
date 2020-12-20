@@ -104,6 +104,8 @@ class AbstractConnection(ABC, Module):
         mask = kwargs.get("mask", None)
         if mask is not None:
             self.w.masked_fill_(mask, 0)
+            #print(self.w)
+            
 
     @abstractmethod
     def reset_state_variables(self) -> None:
@@ -165,7 +167,7 @@ class Connection(AbstractConnection):
         self.w = Parameter(w, requires_grad=False)
         self.b = Parameter(kwargs.get("b", torch.zeros(target.n)), requires_grad=False)
 
-    def compute(self, s: torch.Tensor) -> torch.Tensor:
+    def compute(self,s: torch.Tensor, mask : torch.Tensor,training = True,dr=0) -> torch.Tensor:
         # language=rst
         """
         Compute pre-activations given spikes using connection weights.
@@ -175,7 +177,21 @@ class Connection(AbstractConnection):
                  decaying spike activation).
         """
         # Compute multiplication of spike activations by weights and add bias.
-        post = s.float().view(s.size(0), -1) @ self.w + self.b
+        #print(self.w.data.size())
+
+        
+        saved = torch.mul(mask,self.w.data)
+        #print(mask)
+        #print(saved)
+        if training:
+            fill_0 = (1/(1-dr))*self.w.data.masked_fill_(mask,0)
+        else:
+            fill_0 =  self.w.data.masked_fill_(mask,0) 
+        #print(fill_0)
+        #a= torch.tensor(a,device="cuda")
+        post = s.float().view(s.size(0), -1) @ fill_0 + self.b
+        self.w.data.add_(saved)
+        #print(2)
         return post.view(s.size(0), *self.target.shape)
 
     def update(self, **kwargs) -> None:
@@ -395,7 +411,7 @@ class MaxPool2dConnection(AbstractConnection):
         self.padding = _pair(padding)
         self.dilation = _pair(dilation)
 
-        self.register_buffer("firing_rates", torch.zeros(source.shape))
+        self.register_buffer("firing_rates", torch.ones(source.shape))
 
     def compute(self, s: torch.Tensor) -> torch.Tensor:
         # language=rst
@@ -408,7 +424,7 @@ class MaxPool2dConnection(AbstractConnection):
             decaying spike activation).
         """
         self.firing_rates -= self.decay * self.firing_rates
-        self.firing_rates += s.float().squeeze()
+        self.firing_rates += s.float()
 
         _, indices = F.max_pool2d(
             self.firing_rates,
@@ -443,7 +459,6 @@ class MaxPool2dConnection(AbstractConnection):
         super().reset_state_variables()
 
         self.firing_rates = torch.zeros(self.source.shape)
-
 
 class LocalConnection(AbstractConnection):
     # language=rst
