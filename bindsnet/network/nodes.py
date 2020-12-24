@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from functools import reduce
 from operator import mul
-from typing import Iterable, Optional, Union
+from typing import Dict, Iterable, Optional, Union
 
 import torch
 
@@ -946,13 +946,21 @@ class DiehlAndCookNodes(Nodes):
         self.lbound = lbound  # Lower bound of voltage.
         self.one_spike = one_spike  # One spike per timestep.
 
-    def forward(self, x: torch.Tensor) -> None:
+    def forward(self, x: torch.Tensor, **kwargs) -> None:
         # language=rst
         """
         Runs a single simulation step.
 
         :param x: Inputs to the layer.
+        :param Dict[str, torch.Tensor] neuron_fault: Mapping of layer names to boolean masks if 
+        neurons should be clamped to spiking or not. The ``Tensor``s have shape ``[n_neurons]`` 
+        or ``[time, n_neurons]``.
         """
+        # setup mask
+        n_masks = kwargs.get("neuron_fault", {})
+        clamp = n_masks.get("clamp", None)
+        unclamp = n_masks.get("unclamp", None)
+
         # Decay voltages and adaptive thresholds.
         self.v = self.decay * (self.v - self.rest) + self.rest
         if self.learning:
@@ -964,8 +972,12 @@ class DiehlAndCookNodes(Nodes):
         # Decrement refractory counters.
         self.refrac_count -= self.dt
 
-        # Check for spiking neurons.
+        # Check for spiking neurons also handling always fired or always unfired.
         self.s = self.v >= self.thresh + self.theta
+        if clamp is not None:
+            self.s[:, clamp] = 1
+        elif unclamp is not None:
+            self.s[:, unclamp] = 0
 
         # Refractoriness, voltage reset, and adaptive thresholds.
         self.refrac_count.masked_fill_(self.s, self.refrac)

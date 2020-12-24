@@ -251,18 +251,15 @@ class Network(torch.nn.Module):
 
         Keyword arguments:
 
-        :param Dict[str, torch.Tensor] clamp: Mapping of layer names to boolean masks if
-            neurons should be clamped to spiking. The ``Tensor``s have shape
+        :param Dict[str, torch.Tensor] neuron_fault: Mapping of layer names to boolean masks if
+            neurons should be clamped to spiking or not. The ``Tensor``s have shape
             ``[n_neurons]`` or ``[time, n_neurons]``.
-        :param Dict[str, torch.Tensor] unclamp: Mapping of layer names to boolean masks
-            if neurons should be clamped to not spiking. The ``Tensor``s should have
-            shape ``[n_neurons]`` or ``[time, n_neurons]``.
         :param Dict[str, torch.Tensor] injects_v: Mapping of layer names to boolean
             masks if neurons should be added voltage. The ``Tensor``s should have shape
             ``[n_neurons]`` or ``[time, n_neurons]``.
         :param Union[float, torch.Tensor] reward: Scalar value used in reward-modulated
             learning.
-        :param Dict[Tuple[str], torch.Tensor] masks: Mapping of connection names to
+        :param Dict[Tuple[str], torch.Tensor] connection_fault: Mapping of connection names to
             boolean masks determining which weights to clamp to zero.
 
         **Example:**
@@ -296,11 +293,11 @@ class Network(torch.nn.Module):
             plt.show()
         """
         # Parse keyword arguments.
-        clamps = kwargs.get("clamp", {})
-        unclamps = kwargs.get("unclamp", {})
-        masks = kwargs.get("masks", {})
+        n_masks = kwargs.get("neuron_fault", {})
+        c_masks = kwargs.get("connection_fault", {})
         injects_v = kwargs.get("injects_v", {})
-        name = kwargs.get("name", None)
+        name = kwargs.get("name", {})
+        isReturnSpike = kwargs.get("isRetrunSpike", False)
 
         # Compute reward.
         if self.reward_fn is not None:
@@ -344,6 +341,10 @@ class Network(torch.nn.Module):
                 current_inputs.update(self._get_inputs())
 
             for l in self.layers:
+                # get mask
+                clamp = n_masks.get("clamp", None)
+                unclamp = n_masks.get("unclamp", None)
+
                 # Update each layer of nodes.
                 if l in inputs:
                     if l in current_inputs:
@@ -355,16 +356,19 @@ class Network(torch.nn.Module):
                     # Get input to this layer (one-step mode).
                     current_inputs.update(self._get_inputs(layers=[l]))
 
-                if l in current_inputs:
+                if l in name and clamp is not None:
+                    self.layers[l].forward(x=current_inputs[l], neuron_fault=n_masks)
+                elif l in name and unclamp is not None:
+                    self.layers[l].forward(x=current_inputs[l], neuron_fault=n_masks)
+                elif l in current_inputs:
                     self.layers[l].forward(x=current_inputs[l])
                 else:
                     self.layers[l].forward(x=torch.zeros(self.layers[l].s.shape))
 
                 # Clamp neurons to spike.
-                clamp = clamps.get(l, None)
                 if clamp is not None:
                     if name == None:
-                            raise Exception("Layer Name id Needed!!")
+                        raise Exception("Layer Name id Needed!!")
                     elif l in name:
                         if clamp.ndimension() == 1:
                             self.layers[l].s[:, clamp] = 1
@@ -372,17 +376,12 @@ class Network(torch.nn.Module):
                             self.layers[l].s[:, clamp[t]] = 1
 
                 # Clamp neurons not to spike.
-                unclamp = unclamps.get(1, None)
-                a = unclamps.get(1, None)
-                if unclamp is not None:
+                elif unclamp is not None:
                     if name == None:
                         raise Exception("Layer Name id Needed!!")
                     elif l in name:
                         if unclamp.ndimension() == 1:
-                            # print(l)
-                            # print(self.layers[l].s.shape)
                             self.layers[l].s[:, unclamp] = 0
-                            # assert(1 == 2)
                         else:
                             self.layers[l].s[:, unclamp[t]] = 0
 
@@ -397,7 +396,7 @@ class Network(torch.nn.Module):
             # Run synapse updates.
             for c in self.connections:
                 self.connections[c].update(
-                    mask=masks.get(c, None), learning=self.learning, **kwargs
+                    mask=c_masks.get(c, None), learning=self.learning, **kwargs
                 )
 
             # # Get input to all layers.

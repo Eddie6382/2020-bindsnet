@@ -125,6 +125,7 @@ def all_activity(
             rates[:, i] = torch.sum(spikes[:, indices], 1) / n_assigns
 
     # Predictions are arg-max of layer-wise firing rates.
+    # print(rates)
     return torch.sort(rates, dim=1, descending=True)[1][:, 0]
 
 

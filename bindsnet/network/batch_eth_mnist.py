@@ -16,7 +16,6 @@ from bindsnet.evaluation import all_activity, proportion_weighting, assign_label
 from bindsnet.models import DiehlAndCook2015
 from bindsnet.network.monitors import Monitor
 from bindsnet.utils import get_square_weights, get_square_assignments
-from bindsnet.learning.learning import WeightDependentPostPre
 from bindsnet.analysis.plotting import (
     plot_input,
     plot_spikes,
@@ -131,21 +130,24 @@ proportions = torch.zeros((n_neurons, n_classes), device=device)
 rates = torch.zeros((n_neurons, n_classes), device=device)
 
 # Masking
-mask_dict = dict()
+clamp_type, inh_layer = "", {"Ae"}
+dict_idx = dict()
 if clamp > 0:
-    mask = np.sort(np.random.choice(n_neurons, int(n_neurons * clamp), replace=False))
-    mask_dict["clamp"] = torch.from_numpy(mask)
+    mask = np.random.choice(n_neurons, int(n_neurons * clamp), replace=False)
     print("Always fired neurons:", mask)
-    c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
+    c_mask = np.setdiff1d(np.arange(n_neurons), mask)
+    dict_idx[1] = torch.from_numpy(mask)
+    dict_idx[0] = torch.from_numpy(c_mask)
+    clamp_type = "clamp"
 elif unclamp > 0:
-    mask = np.sort(np.random.choice(n_neurons, int(n_neurons * unclamp), replace=False))
-    mask_dict["unclamp"] = torch.from_numpy(mask)
+    mask = np.random.choice(n_neurons, int(n_neurons * unclamp), replace=False)
     print("Unfired neurons:", mask)
-    c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
-    
-else:
-    mask = np.arange(0)
-    c_mask = np.arange(n_neurons)
+    c_mask = np.setdiff1d(np.arange(n_neurons), mask)
+    dict_idx[1] = torch.from_numpy(mask)
+    dict_idx[0] = torch.from_numpy(c_mask)
+    clamp_type = "unclamp"
+
+
 
 # Sequence of accuracy estimates.
 accuracy = {"all": [], "proportion": []}
@@ -267,13 +269,7 @@ for epoch in range(n_epochs):
         labels.extend(batch["label"].tolist())
 
         # Run the network on the input.
-        # network.run(inputs=inputs, time=time, input_time_dim=1, neuron_fault=mask_dict, name={"Ae"}, isReturnSpike=True)
-        network.run(inputs=inputs, time=time, input_time_dim=1, update_rule=WeightDependentPostPre)
-        if (not step % update_steps) and (step > 0) and (mask_dict != dict()):
-            print("input shape:", inputs["X"].shape)
-            print("spike_record shape:", spike_record.shape)
-            # print("abnormal neuron's spikes:", torch.count_nonzero(spike_record[:, :, mask]))
-            # print("normal neuron's spikes:", torch.count_nonzero(spike_record[:, :, c_mask]))
+        network.run(inputs=inputs, time=time, input_time_dim=1)
 
         # Add to spikes recording.
         s = spikes["Ae"].get("s").permute((1, 0, 2))
@@ -355,10 +351,8 @@ print("\nBegin testing\n")
 network.train(mode=False)
 start = t()
 
-# To see the neuron is correctly clamped
-
 pbar = tqdm(total=n_test)
-for step, batch in enumerate(tqdm(test_dataset)):
+for step, batch in enumerate(test_dataset):
     if step > n_test:
         break
     # Get next input sample.
@@ -367,16 +361,13 @@ for step, batch in enumerate(tqdm(test_dataset)):
         inputs = {k: v.cuda() for k, v in inputs.items()}
 
     # Run the network on the input.
-    network.run(inputs=inputs, time=time, input_time_dim=1, neuron_fault=mask_dict, name={"Ae"}, isReturnSpike=True)
+    network.run(inputs=inputs, time=time, input_time_dim=1, **{clamp_type: dict_idx}, name={"Ae"}, isReturnSpike=True)
 
     # Add to spikes recording.
     spike_record = spikes["Ae"].get("s").permute((1, 0, 2))
 
-    if (not step % 1000) and (step > 0) and (mask_dict != dict()):
-        print("input shape:", inputs["X"].shape)
+    if (not step % 1000) and (step > 0) and (clamp_type != ""):
         print("spike_record shape:", spike_record.shape)
-        print("abnormal neuron's spikes:", torch.count_nonzero(spike_record[:, :, mask]))
-        print("normal neuron's spikes:", torch.count_nonzero(spike_record[:, :, c_mask]))
 
 
     # Convert the array of labels into a tensor

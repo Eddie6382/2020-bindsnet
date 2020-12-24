@@ -1,0 +1,75 @@
+t(base) b07901020@ladsapple:~/bindsnet/examples/mnist$ python batch_eth_mnist.py --gpu --batch_size 32 --update_steps 512 --n_neurons 100 --n_epochs 1 --unclamp 0.96
+Running on Device =  cuda
+Unfired neurons: [ 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
+ 24 25 26 27 28 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48
+ 49 50 51 52 53 54 55 56 58 59 60 61 63 64 65 66 67 68 69 70 71 72 73 74
+ 75 76 77 78 79 80 81 82 83 84 85 86 87 89 90 91 92 93 94 95 96 97 98 99]
+
+Begin training.
+
+Progress: 0 / 1 (0.0000 seconds)
+ 27%|██████████████████████▍                                                           | 512/1875 [01:08<02:59,  7.61it/s]
+All activity accuracy: 10.00 (last), 10.00 (average), 10.00 (best)
+Proportion weighting accuracy: 10.00 (last), 10.00 (average), 10.00 (best)
+
+input shape: torch.Size([100, 32, 1, 28, 28])
+spike_record shape: torch.Size([16384, 100, 100])
+ 55%|████████████████████████████████████████████▏                                    | 1024/1875 [02:14<01:48,  7.83it/s]
+All activity accuracy: 79.35 (last), 44.67 (average), 79.35 (best)
+Proportion weighting accuracy: 80.85 (last), 45.43 (average), 80.85 (best)
+
+input shape: torch.Size([100, 32, 1, 28, 28])
+spike_record shape: torch.Size([16384, 100, 100])
+ 82%|██████████████████████████████████████████████████████████████████▎              | 1536/1875 [03:19<00:42,  7.94it/s]
+All activity accuracy: 79.22 (last), 56.19 (average), 79.35 (best)
+Proportion weighting accuracy: 80.65 (last), 57.17 (average), 80.85 (best)
+
+input shape: torch.Size([100, 32, 1, 28, 28])
+spike_record shape: torch.Size([16384, 100, 100])
+100%|█████████████████████████████████████████████████████████████████████████████████| 1875/1875 [04:01<00:00,  7.78it/s]
+Progress: 1 / 1 (241.0638 seconds)
+Training complete.
+
+
+Begin testing
+
+Test progress:  10%|██████▌                                                          | 1000/10000 [01:40<15:20,  9.78it/sinput shape: torch.Size([100, 1, 28, 28])                                             | 1000/10000 [01:40<15:20,  9.78it/s]
+spike_record shape: torch.Size([1, 100, 100])
+abnormal neuron's spikes: tensor(0, device='cuda:0')
+normal neuron's spikes: tensor(0, device='cuda:0')
+Test progress:  20%|█████████████                                                    | 2000/10000 [03:22<13:17, 10.03it/sinput shape: torch.Size([100, 1, 28, 28])                                             | 2000/10000 [03:22<13:17, 10.03it/s]
+spike_record shape: torch.Size([1, 100, 100])
+abnormal neuron's spikes: tensor(0, device='cuda:0')
+normal neuron's spikes: tensor(0, device='cuda:0')
+Test progress:  30%|███████████████████▌                                             | 3000/10000 [04:59<11:23, 10.25it/sinput shape: torch.Size([100, 1, 28, 28])                                             | 3000/10000 [04:59<11:23, 10.25it/s]
+spike_record shape: torch.Size([1, 100, 100])
+abnormal neuron's spikes: tensor(0, device='cuda:0')
+normal neuron's spikes: tensor(0, device='cuda:0')
+Test progress:  40%|██████████████████████████                                       | 4000/10000 [06:38<10:02,  9.95it/sinput shape: torch.Size([100, 1, 28, 28])                                             | 4000/10000 [06:38<10:02,  9.95it/s]
+spike_record shape: torch.Size([1, 100, 100])
+abnormal neuron's spikes: tensor(0, device='cuda:0')
+normal neuron's spikes: tensor(1, device='cuda:0')
+Test progress:  50%|████████████████████████████████▍                                | 4999/10000 [08:17<08:15, 10.09it/s]input shape: torch.Size([100, 1, 28, 28])███▉                                        | 4999/10000 [08:17<08:15, 10.09it/s]
+spike_record shape: torch.Size([1, 100, 100])
+abnormal neuron's spikes: tensor(0, device='cuda:0')
+normal neuron's spikes: tensor(0, device='cuda:0')
+Test progress:  60%|██████████████████████████████████████▉                          | 5999/10000 [09:57<06:33, 10.17it/s]input shape: torch.Size([100, 1, 28, 28])███████████▉                                | 5999/10000 [09:57<06:33, 10.17it/s]
+spike_record shape: torch.Size([1, 100, 100])
+abnormal neuron's spikes: tensor(0, device='cuda:0')
+normal neuron's spikes: tensor(1, device='cuda:0')
+Test progress:  70%|█████████████████████████████████████████████▍                   | 6999/10000 [11:37<05:00,  9.97it/s]input shape: torch.Size([100, 1, 28, 28])███████████████████▉                        | 6999/10000 [11:37<05:00,  9.97it/s]
+spike_record shape: torch.Size([1, 100, 100])
+abnormal neuron's spikes: tensor(0, device='cuda:0')
+normal neuron's spikes: tensor(0, device='cuda:0')
+Test progress:  80%|███████████████████████████████████████████████████▉             | 7999/10000 [13:19<03:16, 10.16it/s]input shape: torch.Size([100, 1, 28, 28])███████████████████████████▉                | 7999/10000 [13:19<03:16, 10.16it/s]
+spike_record shape: torch.Size([1, 100, 100])
+abnormal neuron's spikes: tensor(0, device='cuda:0')
+normal neuron's spikes: tensor(2, device='cuda:0')
+Test progress:  90%|██████████████████████████████████████████████████████████▌      | 9000/10000 [14:59<01:41,  9.81it/sinput shape: torch.Size([100, 1, 28, 28])█████████████████████████████████████        | 9000/10000 [14:59<01:41,  9.81it/s]
+spike_record shape: torch.Size([1, 100, 100])
+abnormal neuron's spikes: tensor(0, device='cuda:0')
+normal neuron's spikes: tensor(1, device='cuda:0')
+100%|███████████████████████████████████████████████████████████████████████████████| 10000/10000 [16:40<00:00, 10.00it/s]
+100%|███████████████████████████████████████████████████████████████████████████████| 10000/10000 [16:40<00:00,  9.86it/s]
+All activity accuracy: 0.22
+Proportion weighting accuracy: 0.23 
