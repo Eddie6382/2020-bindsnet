@@ -297,11 +297,11 @@ class Network(torch.nn.Module):
             plt.show()
         """
         # Parse keyword arguments.
-        clamps = kwargs.get("clamp", {})
-        unclamps = kwargs.get("unclamp", {})
-        masks = kwargs.get("masks", {})
+        n_masks = kwargs.get("neuron_fault", {})
+        c_masks = kwargs.get("connection_fault", {})
         injects_v = kwargs.get("injects_v", {})
         name = kwargs.get("name", None)
+        isReturnSpike = kwargs.get("isRetrunSpike", False)
         # Compute reward.
         if self.reward_fn is not None:
             kwargs["reward"] = self.reward_fn.compute(**kwargs)
@@ -341,9 +341,12 @@ class Network(torch.nn.Module):
             # Get input to all layers (synchronous mode).
             current_inputs = {}
             if not one_step:
-                current_inputs.update(self._get_inputs())
+                current_inputs.update(self._get_inputs(mask =massk,training=training,dr=dr))
 
             for l in self.layers:
+                # get mask
+                clamp = n_masks.get("clamp", None)
+                unclamp = n_masks.get("unclamp", None)
                 # Update each layer of nodes.
                 if l in inputs:
                     if l in current_inputs:
@@ -355,10 +358,17 @@ class Network(torch.nn.Module):
                     # Get input to this layer (one-step mode).
                     current_inputs.update(self._get_inputs(layers=[l],mask =massk,training=training,dr=dr))
 
-                self.layers[l].forward(x=current_inputs[l])
+                
+                if l in current_inputs:
+                    self.layers[l].forward(x=current_inputs[l])
+                elif l in name and clamp is not None:
+                    self.layers[l].forward(x=torch.zeros(self.layers[l].s.shape), neuron_fault=n_masks)
+                elif l in name and unclamp is not None:
+                    self.layers[l].forward(x=torch.zeros(self.layers[l].s.shape), neuron_fault=n_masks)
+                else:
+                    self.layers[l].forward(x=torch.zeros(self.layers[l].s.shape))
 
                 # Clamp neurons to spike.
-                clamp = clamps.get(l, None)
                 if clamp is not None:
                     if name == None:
                             raise Exception("Layer Name id Needed!!")
@@ -369,36 +379,35 @@ class Network(torch.nn.Module):
                             self.layers[l].s[:, clamp[t]] = 1
 
                 # Clamp neurons not to spike.
-                unclamp = unclamps.get(1, None)
-                a = unclamps.get(1, None)
-                if unclamp is not None:
-                    if name == None:
-                        raise Exception("Layer Name id Needed!!")
-                    elif l in name:
-                        if unclamp.ndimension() == 1:
-                            # print(l)
-                            # print(self.layers[l].s.shape)
-                            self.layers[l].s[:, unclamp] = 0
-                            # assert(1 == 2)
-                        else:
-                            self.layers[l].s[:, unclamp[t]] = 0
 
-                # Inject voltage to neurons.
-                inject_v = injects_v.get(l, None)
-                if inject_v is not None:
-                    if inject_v.ndimension() == 1:
-                        self.layers[l].v += inject_v
-                    else:
-                        self.layers[l].v += inject_v[t]
+                    elif unclamp is not None:
+                        if name == None:
+                            raise Exception("Layer Name id Needed!!")
+                        elif l in name:
+                            if unclamp.ndimension() == 1:
+                                # print(l)
+                                # print(self.layers[l].s.shape)
+                                self.layers[l].s[:, unclamp] = 0
+                                # assert(1 == 2)
+                            else:
+                                self.layers[l].s[:, unclamp[t]] = 0
+
+                    # Inject voltage to neurons.
+                    inject_v = injects_v.get(l, None)
+                    if inject_v is not None:
+                        if inject_v.ndimension() == 1:
+                            self.layers[l].v += inject_v
+                        else:
+                            self.layers[l].v += inject_v[t]
 
             # Run synapse updates.
             for c in self.connections:
                 self.connections[c].update(
-                    mask=masks.get(c, None), learning=self.learning, **kwargs
+                    mask=c_masks.get(c, None), learning=self.learning, **kwargs
                 )
                 #print("1")
             # Get input to all layers.
-            current_inputs.update(self._get_inputs(mask = massk,training=training,dr = dr))
+            #current_inputs.update(self._get_inputs(mask = massk,training=training,dr = dr))
 
             # Record state variables of interest.
             for m in self.monitors:

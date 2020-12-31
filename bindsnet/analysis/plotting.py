@@ -469,8 +469,6 @@ def plot_performance(
     ax: Optional[Axes] = None,
     figsize: Tuple[int, int] = (7, 4),
     save: Optional[str] = None,
-    period: int = 1,
-    interval: int = 10,
 ) -> Axes:
     # language=rst
     """
@@ -489,16 +487,16 @@ def plot_performance(
 
         for scheme in performances:
             ax.plot(
-                np.arange(0, len(performances[scheme])*period/1000, period/1000),
-                np.array(performances[scheme]),
+                range(len(performances[scheme])),
+                [p for p in performances[scheme]],
                 label=scheme,
             )
 
         ax.set_ylim([0, 100])
         ax.set_title("Estimated classification accuracy")
-        ax.set_xlabel("No. of examples in thousands")
-        ax.set_ylabel("Training Accuracy")
-        ax.set_xticks((np.arange(0,200,20)))
+        ax.set_xlabel("No. of examples")
+        ax.set_ylabel("Accuracy")
+        ax.set_xticks(())
         ax.set_yticks(range(0, 110, 10))
         ax.legend()
 
@@ -539,7 +537,6 @@ def plot_voltages(
     plot_type: str = "color",
     thresholds: Dict[str, torch.Tensor] = None,
     figsize: Tuple[float, float] = (8.0, 4.5),
-    save: Optional[str] = None,
 ) -> Tuple[List[AxesImage], List[Axes]]:
     # language=rst
     """
@@ -677,8 +674,6 @@ def plot_voltages(
             plt.setp(axes, xlabel="Simulation time", ylabel="Voltage")
 
         plt.tight_layout()
-        if save is not None:
-            plt.savefig(save, bbox_inches="tight")
 
     else:
         # Plotting figure given
@@ -757,7 +752,5 @@ def plot_voltages(
             plt.setp(axes, xlabel="Simulation time", ylabel="Voltage")
 
         plt.tight_layout()
-        if save is not None:
-            plt.savefig(save, bbox_inches="tight")
 
     return ims, axes

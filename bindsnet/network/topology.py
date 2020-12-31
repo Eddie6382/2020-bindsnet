@@ -167,7 +167,7 @@ class Connection(AbstractConnection):
         self.w = Parameter(w, requires_grad=False)
         self.b = Parameter(kwargs.get("b", torch.zeros(target.n)), requires_grad=False)
 
-    def compute(self,s: torch.Tensor, mask : torch.Tensor,training = True,dr=0) -> torch.Tensor:
+    def compute(self,s: torch.Tensor, mask : torch.Tensor,training = True,dr:float=0) -> torch.Tensor:
         # language=rst
         """
         Compute pre-activations given spikes using connection weights.

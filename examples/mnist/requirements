@@ -1,0 +1,17 @@
+scipy
+numpy
+cython
+torch
+torchvision
+tqdm
+setuptools
+matplotlib
+gym
+scikit-build
+scikit_image
+scikit_learn
+opencv-python
+sphinx_rtd_theme
+pytest
+pandas
+tensorboardX

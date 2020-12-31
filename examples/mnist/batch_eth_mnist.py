@@ -16,6 +16,7 @@ from bindsnet.evaluation import all_activity, proportion_weighting, assign_label
 from bindsnet.models import DiehlAndCook2015
 from bindsnet.network.monitors import Monitor
 from bindsnet.utils import get_square_weights, get_square_assignments
+from bindsnet.learning.learning import WeightDependentPostPre
 from bindsnet.analysis.plotting import (
     plot_input,
     plot_spikes,
@@ -47,6 +48,8 @@ parser.add_argument("--plot", dest="plot", action="store_true")
 parser.add_argument("--gpu", dest="gpu", action="store_true")
 parser.add_argument("--clamp", type=float, default=0)
 parser.add_argument("--unclamp", type=float, default=0)
+parser.add_argument("--dr_rate", type=float, default=0)
+parser.add_argument("--txt", type=int, default=0)
 parser.set_defaults(plot=False, gpu=False)
 
 args = parser.parse_args()
@@ -71,7 +74,8 @@ plot = args.plot
 gpu = args.gpu
 clamp = args.clamp
 unclamp = args.unclamp
-
+dr_rate = args.dr_rate
+txt = args.txt
 update_interval = update_steps * batch_size
 
 device = "cpu"
@@ -131,25 +135,21 @@ proportions = torch.zeros((n_neurons, n_classes), device=device)
 rates = torch.zeros((n_neurons, n_classes), device=device)
 
 # Masking
-clamp_type, inh_layer = "", {"Ae"}
-dict_idx = dict()
+mask_dict = dict()
 if clamp > 0:
-    mask = np.random.choice(n_neurons, int(n_neurons * clamp), replace=False)
+    mask = np.sort(np.random.choice(n_neurons, int(n_neurons * clamp), replace=False))
+    mask_dict["clamp"] = torch.from_numpy(mask)
     print("Always fired neurons:", mask)
-    c_mask = np.setdiff1d(np.arange(n_neurons), mask)
-    dict_idx[1] = torch.from_numpy(mask)
-    dict_idx[0] = torch.from_numpy(c_mask)
-    clamp_type = "clamp"
+    c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
 elif unclamp > 0:
-    mask = np.random.choice(n_neurons, int(n_neurons * unclamp), replace=False)
+    mask = np.sort(np.random.choice(n_neurons, int(n_neurons * unclamp), replace=False))
+    mask_dict["unclamp"] = torch.from_numpy(mask)
     print("Unfired neurons:", mask)
-    c_mask = np.setdiff1d(np.arange(n_neurons), mask)
-    dict_idx[1] = torch.from_numpy(mask)
-    dict_idx[0] = torch.from_numpy(c_mask)
-    clamp_type = "unclamp"
-
-#dropout_rate
-dr_rate = 0.5
+    c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
+    
+else:
+    mask = np.arange(0)
+    c_mask = np.arange(n_neurons)
 
 # Sequence of accuracy estimates.
 accuracy = {"all": [], "proportion": []}
@@ -212,7 +212,6 @@ for epoch in range(n_epochs):
         inputs = {"X": batch["encoded_image"]}
         if gpu:
             inputs = {k: v.cuda() for k, v in inputs.items()}
-        
         
         if step % update_steps == 0 and step > 0:
             # Convert the array of labels into a tensor
@@ -292,7 +291,7 @@ for epoch in range(n_epochs):
         #print(masks)
         labels.extend(batch["label"].tolist())
         # Run the network on the input.
-        network.run(inputs=inputs, time=time, input_time_dim=1, massk = masks,one_step=True, train = True)
+        network.run(inputs=inputs, time=time, input_time_dim=1, massk = masks, train = True,update_rule=WeightDependentPostPre,one_step=True)
         #del mask_i,mask_e
         # Add to spikes recording.
         s = spikes["Ae"].get("s").permute((1, 0, 2))
@@ -355,7 +354,7 @@ test_dataset = MNIST(
 test_dataloader = DataLoader(
     test_dataset,
     batch_size=batch_size,
-    shuffle=True,
+    shuffle=False,
     num_workers=n_workers,
     pin_memory=gpu,
 )
@@ -378,7 +377,7 @@ for step, batch in enumerate(test_dataset):
         inputs = {k: v.cuda() for k, v in inputs.items()}
 
     # Run the network on the input.
-    network.run(inputs=inputs, time=time, input_time_dim=1, **{clamp_type: dict_idx}, name="Ae",train = False,dr = dr_rate)
+    network.run(inputs=inputs, time=time, input_time_dim=1,one_step = True,neuron_fault=mask_dict, name={"Ae"},train = False,dr = dr_rate,isReturnSpike=True)
 
     # Add to spikes recording.
     spike_record = spikes["Ae"].get("s").permute((1, 0, 2))
@@ -406,9 +405,12 @@ for step, batch in enumerate(test_dataset):
     network.reset_state_variables()  # Reset state variables.
     pbar.set_description_str("Test progress: ")
     pbar.update()
+f = open("w"+str(txt)+".txt","a")
+f.write(str(dr_rate)+" "+str(unclamp)+" "+str(accuracy["all"] / n_test)+"  "+str(accuracy["proportion"] / n_test)+"\n")
 
 print("\nAll activity accuracy: %.2f" % (accuracy["all"] / n_test))
 print("Proportion weighting accuracy: %.2f \n" % (accuracy["proportion"] / n_test))
 
 print("Progress: %d / %d (%.4f seconds)" % (epoch + 1, n_epochs, t() - start))
 print("Testing complete.\n")
+f.close()
