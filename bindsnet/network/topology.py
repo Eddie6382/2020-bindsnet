@@ -165,7 +165,7 @@ class Connection(AbstractConnection):
         self.w = Parameter(w, requires_grad=False)
         self.b = Parameter(kwargs.get("b", torch.zeros(target.n)), requires_grad=False)
 
-    def compute(self, s: torch.Tensor) -> torch.Tensor:
+    def compute(self,s: torch.Tensor, mask : torch.Tensor,training = True,dr:float=0) -> torch.Tensor:
         # language=rst
         """
         Compute pre-activations given spikes using connection weights.
@@ -175,7 +175,18 @@ class Connection(AbstractConnection):
                  decaying spike activation).
         """
         # Compute multiplication of spike activations by weights and add bias.
-        post = s.float().view(s.size(0), -1) @ self.w + self.b
+
+        saved = torch.mul(mask,self.w.data)
+  
+        if training:
+            fill_0 = (1/(1-dr))*self.w.data.masked_fill_(mask,0)
+        else:
+            fill_0 =  self.w.data.masked_fill_(mask,0) 
+
+        #a= torch.tensor(a,device="cuda")
+        post = s.float().view(s.size(0), -1) @ fill_0 + self.b
+        self.w.data.add_(saved)
+
         return post.view(s.size(0), *self.target.shape)
 
     def update(self, **kwargs) -> None:

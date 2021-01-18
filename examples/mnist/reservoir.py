@@ -178,7 +178,6 @@ class NN(nn.Module):
         # out = torch.sigmoid(self.linear_2(out))
         return out
 
-
 # Create and train logistic regression model on reservoir outputs.
 model = NN(n_neurons, 10).to(device)
 criterion = torch.nn.MSELoss(reduction="sum")

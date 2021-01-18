@@ -48,6 +48,9 @@ parser.add_argument("--plot", dest="plot", action="store_true")
 parser.add_argument("--gpu", dest="gpu", action="store_true")
 parser.add_argument("--clamp", type=float, default=0)
 parser.add_argument("--unclamp", type=float, default=0)
+parser.add_argument("--dr_rate", type=float, default=0)
+parser.add_argument("--txt", type=int, default=0)
+parser.add_argument("--model_path", type=str)
 parser.set_defaults(plot=False, gpu=False)
 
 args = parser.parse_args()
@@ -72,6 +75,8 @@ plot = args.plot
 gpu = args.gpu
 clamp = args.clamp
 unclamp = args.unclamp
+dr_rate = args.dr_rate
+txt = args.txt
 
 update_interval = update_steps * batch_size
 
@@ -142,7 +147,6 @@ elif unclamp > 0:
     mask_dict["unclamp"] = torch.from_numpy(mask)
     print("Unfired neurons:", mask)
     c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
-    
 else:
     mask = np.arange(0)
     c_mask = np.arange(n_neurons)
@@ -264,16 +268,23 @@ for epoch in range(n_epochs):
 
             labels = []
 
+        # mask on connections
+        mask_e = torch.zeros(n_neurons, device=device)
+        mask_np = np.random.choice(a=n_neurons, size=int(n_neurons*dr_rate),replace = False)
+        mask_e[torch.from_numpy(mask_np)] = 1
+        mask_i = mask_e.expand(784,n_neurons)
+        mask_e = torch.diag(mask_e)
+        # print(mask_e.bool().shape)
+        masks = {("Ae","Ai"):mask_e.bool()}
+
         labels.extend(batch["label"].tolist())
 
         # Run the network on the input.
         # network.run(inputs=inputs, time=time, input_time_dim=1, neuron_fault=mask_dict, name={"Ae"}, isReturnSpike=True)
-        network.run(inputs=inputs, time=time, input_time_dim=1, update_rule=WeightDependentPostPre)
+        network.run(inputs=inputs, time=time, input_time_dim=1, dr_mask=masks, train = True,update_rule=WeightDependentPostPre,one_step=True)
         if (not step % update_steps) and (step > 0) and (mask_dict != dict()):
             print("input shape:", inputs["X"].shape)
             print("spike_record shape:", spike_record.shape)
-            # print("abnormal neuron's spikes:", torch.count_nonzero(spike_record[:, :, mask]))
-            # print("normal neuron's spikes:", torch.count_nonzero(spike_record[:, :, c_mask]))
 
         # Add to spikes recording.
         s = spikes["Ae"].get("s").permute((1, 0, 2))
@@ -358,7 +369,7 @@ start = t()
 # To see the neuron is correctly clamped
 
 pbar = tqdm(total=n_test)
-for step, batch in enumerate(tqdm(test_dataset)):
+for step, batch in enumerate(tqdm(test_dataloader)):
     if step > n_test:
         break
     # Get next input sample.
@@ -367,7 +378,7 @@ for step, batch in enumerate(tqdm(test_dataset)):
         inputs = {k: v.cuda() for k, v in inputs.items()}
 
     # Run the network on the input.
-    network.run(inputs=inputs, time=time, input_time_dim=1, neuron_fault=mask_dict, name={"Ae"}, isReturnSpike=True)
+    network.run(inputs=inputs, time=time, input_time_dim=1,one_step = True,neuron_fault=mask_dict, name={"Ae"},train = False,dr = dr_rate,isReturnSpike=True)
 
     # Add to spikes recording.
     spike_record = spikes["Ae"].get("s").permute((1, 0, 2))
@@ -377,7 +388,6 @@ for step, batch in enumerate(tqdm(test_dataset)):
         print("spike_record shape:", spike_record.shape)
         print("abnormal neuron's spikes:", torch.count_nonzero(spike_record[:, :, mask]))
         print("normal neuron's spikes:", torch.count_nonzero(spike_record[:, :, c_mask]))
-
 
     # Convert the array of labels into a tensor
     label_tensor = torch.tensor(batch["label"], device=device)

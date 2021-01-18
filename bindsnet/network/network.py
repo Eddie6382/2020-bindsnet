@@ -205,7 +205,7 @@ class Network(torch.nn.Module):
         virtual_file.seek(0)
         return torch.load(virtual_file)
 
-    def _get_inputs(self, layers: Iterable = None) -> Dict[str, torch.Tensor]:
+    def _get_inputs(self, layers: Iterable = None, training = True,dr=0,mask :Dict = {}) -> Dict[str, torch.Tensor]:
         # language=rst
         """
         Fetches outputs from network layers to use as input to downstream layers.
@@ -231,12 +231,12 @@ class Network(torch.nn.Module):
                     )
 
                 # Add to input: source's spikes multiplied by connection weights.
-                inputs[c[1]] += self.connections[c].compute(source.s)
+                inputs[c[1]] += self.connections[c].compute(source.s,mask = mask.get(c,torch.zeros_like(self.connections[c].w).bool()),training = training,dr=dr)
 
         return inputs
 
     def run(
-        self, inputs: Dict[str, torch.Tensor], time: int, one_step=False, **kwargs
+        self, inputs: Dict[str, torch.Tensor], time: int, one_step=False, training = True,dr = 0, dr_mask = {}, **kwargs
     ) -> None:
         # language=rst
         """
@@ -338,8 +338,7 @@ class Network(torch.nn.Module):
             # Get input to all layers (synchronous mode).
             current_inputs = {}
             if not one_step:
-                current_inputs.update(self._get_inputs())
-
+                current_inputs.update(self._get_inputs(mask=dr_mask,training=training,dr=dr))
             for l in self.layers:
                 # get mask
                 clamp = n_masks.get("clamp", None)
@@ -354,7 +353,7 @@ class Network(torch.nn.Module):
 
                 if one_step:
                     # Get input to this layer (one-step mode).
-                    current_inputs.update(self._get_inputs(layers=[l]))
+                    current_inputs.update(self._get_inputs(layers=[l],mask =dr_mask,training=training,dr=dr))
 
                 if l in name and clamp is not None:
                     self.layers[l].forward(x=current_inputs[l], neuron_fault=n_masks)
