@@ -420,8 +420,8 @@ for step, batch in enumerate(tqdm(test_dataloader)):
     pbar.set_description_str("Test progress: ")
     pbar.update()
 
-print("\nAll activity accuracy: %.2f" % (accuracy["all"] / n_test))
-print("Proportion weighting accuracy: %.2f \n" % (accuracy["proportion"] / n_test))
+print("\nAll activity accuracy: %.4f" % (accuracy["all"] / n_test))
+print("Proportion weighting accuracy: %.4f \n" % (accuracy["proportion"] / n_test))
 
 print("Progress: %d / %d (%.4f seconds)" % (epoch + 1, n_epochs, t() - start))
 print("Testing complete.\n")
