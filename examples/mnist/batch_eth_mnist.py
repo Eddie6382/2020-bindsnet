@@ -107,20 +107,23 @@ start_intensity = intensity
 TRAINING
 ===========================================================
 '''
-    # Build network.
+# Build network.
+network = DiehlAndCook2015(
+    n_inpt=784,
+    n_neurons=n_neurons,
+    exc=exc,
+    inh=inh,
+    dt=dt,
+    norm=78.4,
+    nu=(1e-4, 1e-2),
+    theta_plus=theta_plus,
+    inpt_shape=(1, 28, 28),
+)
+
+if os.path.exists(model_path):
+    network.load(file_name=model_path, map_location=)
     
-if model_path == None:
-    network = DiehlAndCook2015(
-        n_inpt=784,
-        n_neurons=n_neurons,
-        exc=exc,
-        inh=inh,
-        dt=dt,
-        norm=78.4,
-        nu=(1e-4, 1e-2),
-        theta_plus=theta_plus,
-        inpt_shape=(1, 28, 28),
-    )
+else:
 
     # Directs network to GPU
     if gpu:
