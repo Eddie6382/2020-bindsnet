@@ -80,6 +80,7 @@ txt = args.txt
 model_path = args.model_path
 
 update_interval = update_steps * batch_size
+print("n_neurons:", n_neurons, ", clamp:", clamp, ", unclamp:", unclamp)
 
 device = "cpu"
 # Sets up Gpu use
@@ -120,11 +121,10 @@ network = DiehlAndCook2015(
     inpt_shape=(1, 28, 28),
 )
 
-if os.path.exists(model_path):
-    network.load(file_name=model_path, map_location=)
+if model_path != None and os.path.exists(model_path):
+    network.load(file_name=model_path, map_location=device, learning=False)
     
 else:
-
     # Directs network to GPU
     if gpu:
         network.to("cuda")
@@ -340,6 +340,8 @@ else:
     print("Progress: %d / %d (%.4f seconds)" % (epoch + 1, n_epochs, t() - start))
     print("Training complete.\n")
 
+    if model_path != None:
+        network.save(model_path)
 
 '''
 ===========================================================
