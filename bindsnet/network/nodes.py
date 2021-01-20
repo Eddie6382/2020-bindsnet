@@ -960,9 +960,9 @@ class DiehlAndCookNodes(Nodes):
         n_masks = kwargs.get("neuron_fault", {})
         clamp = n_masks.get("clamp", None)
         unclamp = n_masks.get("unclamp", None)
-        v_drop = n_masks.get("v_drop", None)
+        v_drop = n_masks.get("v_drop", [])
         thres_mask = torch.ones_like(self.theta)
-        thres_mask[v_drop] = 0.1
+        thres_mask[v_drop] = 0.5
 
         # Decay voltages and adaptive thresholds.
         self.v = self.decay * (self.v - self.rest) + self.rest

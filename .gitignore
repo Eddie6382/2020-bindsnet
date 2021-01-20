@@ -130,3 +130,8 @@ figures/
 
 # Analyzer log default directory.
 logs/
+
+# .pkl and .pt
+*neurons/
+*.pkl
+*.pt
