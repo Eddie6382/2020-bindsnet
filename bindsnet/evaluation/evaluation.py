@@ -120,12 +120,10 @@ def all_activity(
         if n_assigns > 0:
             # Get indices of samples with this label.
             indices = torch.nonzero(assignments == i).view(-1)
-
             # Compute layer-wise firing rate for this label.
             rates[:, i] = torch.sum(spikes[:, indices], 1) / n_assigns
 
     # Predictions are arg-max of layer-wise firing rates.
-    # print(rates)
     return torch.sort(rates, dim=1, descending=True)[1][:, 0]
 
 

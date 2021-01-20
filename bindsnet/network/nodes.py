@@ -962,7 +962,7 @@ class DiehlAndCookNodes(Nodes):
         unclamp = n_masks.get("unclamp", None)
         v_drop = n_masks.get("v_drop", None)
         thres_mask = torch.ones_like(self.theta)
-        thres_mask[v_drop] = 0.5
+        thres_mask[v_drop] = 0.1
 
         # Decay voltages and adaptive thresholds.
         self.v = self.decay * (self.v - self.rest) + self.rest

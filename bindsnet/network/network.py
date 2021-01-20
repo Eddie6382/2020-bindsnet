@@ -343,6 +343,7 @@ class Network(torch.nn.Module):
                 # get mask
                 clamp = n_masks.get("clamp", None)
                 unclamp = n_masks.get("unclamp", None)
+                v_drop = n_masks.get("v_drop", None)
 
                 # Update each layer of nodes.
                 if l in inputs:
@@ -358,6 +359,8 @@ class Network(torch.nn.Module):
                 if l in name and clamp is not None:
                     self.layers[l].forward(x=current_inputs[l], neuron_fault=n_masks)
                 elif l in name and unclamp is not None:
+                    self.layers[l].forward(x=current_inputs[l], neuron_fault=n_masks)
+                elif l in name and v_drop is not None:
                     self.layers[l].forward(x=current_inputs[l], neuron_fault=n_masks)
                 elif l in current_inputs:
                     self.layers[l].forward(x=current_inputs[l])

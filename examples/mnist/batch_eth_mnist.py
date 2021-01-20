@@ -15,6 +15,7 @@ from bindsnet.encoding import PoissonEncoder
 from bindsnet.evaluation import all_activity, proportion_weighting, assign_labels
 from bindsnet.models import DiehlAndCook2015
 from bindsnet.network.monitors import Monitor
+from bindsnet.network.network import load
 from bindsnet.utils import get_square_weights, get_square_assignments
 from bindsnet.learning.learning import WeightDependentPostPre
 from bindsnet.analysis.plotting import (
@@ -48,6 +49,7 @@ parser.add_argument("--plot", dest="plot", action="store_true")
 parser.add_argument("--gpu", dest="gpu", action="store_true")
 parser.add_argument("--clamp", type=float, default=0)
 parser.add_argument("--unclamp", type=float, default=0)
+parser.add_argument("--thres_ratio", type=float, default=0)
 parser.add_argument("--dr_rate", type=float, default=0)
 parser.add_argument("--txt", type=int, default=0)
 parser.add_argument("--model_path", type=str, default=None)
@@ -76,8 +78,9 @@ gpu = args.gpu
 clamp = args.clamp
 unclamp = args.unclamp
 dr_rate = args.dr_rate
-txt = args.txt
+txt = args.txt 
 model_path = args.model_path
+thres_ratio = args.thres_ratio
 
 update_interval = update_steps * batch_size
 print("n_neurons:", n_neurons, ", clamp:", clamp, ", unclamp:", unclamp)
@@ -103,11 +106,6 @@ if n_workers == -1:
 n_sqrt = int(np.ceil(np.sqrt(n_neurons)))
 start_intensity = intensity
 
-'''
-===========================================================
-TRAINING
-===========================================================
-'''
 # Build network.
 network = DiehlAndCook2015(
     n_inpt=784,
@@ -122,83 +120,94 @@ network = DiehlAndCook2015(
 )
 
 if model_path != None and os.path.exists(model_path):
-    network.load(file_name=model_path, map_location=device, learning=False)
-    
+    network = load(file_name=model_path, map_location=device, learning=False)
+
+# Directs network to GPU
+if gpu:
+    network.to("cuda")
+
+# Load MNIST data.
+dataset = MNIST(
+    PoissonEncoder(time=time, dt=dt),
+    None,
+    root=os.path.join(ROOT_DIR, "data", "MNIST"),
+    download=True,
+    transform=transforms.Compose(
+        [transforms.ToTensor(), transforms.Lambda(lambda x: x * intensity)]
+    ),
+)
+
+# Neuron assignments and spike proportions.
+n_classes = 10
+assignments = -torch.ones(n_neurons, device=device)
+proportions = torch.zeros((n_neurons, n_classes), device=device)
+rates = torch.zeros((n_neurons, n_classes), device=device)
+
+# Masking
+mask_dict = dict()
+if clamp > 0:
+    mask = np.sort(np.random.choice(n_neurons, int(n_neurons * clamp), replace=False))
+    mask_dict["clamp"] = torch.from_numpy(mask)
+    print("Always fired neurons:", mask)
+    c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
+elif unclamp > 0:
+    mask = np.sort(np.random.choice(n_neurons, int(n_neurons * unclamp), replace=False))
+    mask_dict["unclamp"] = torch.from_numpy(mask)
+    print("Unfired neurons:", mask)
+    c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
+elif thres_ratio > 0:
+    mask = np.sort(np.random.choice(n_neurons, int(n_neurons * thres_ratio), replace=False))
+    mask_dict["v_drop"] = torch.from_numpy(mask)
+    print("Threshold voltage drop neurons:", mask)
+    c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
 else:
-    # Directs network to GPU
-    if gpu:
-        network.to("cuda")
+    mask = np.arange(0)
+    c_mask = np.arange(n_neurons)
 
-    # Load MNIST data.
-    dataset = MNIST(
-        PoissonEncoder(time=time, dt=dt),
-        None,
-        root=os.path.join(ROOT_DIR, "data", "MNIST"),
-        download=True,
-        transform=transforms.Compose(
-            [transforms.ToTensor(), transforms.Lambda(lambda x: x * intensity)]
-        ),
+# Sequence of accuracy estimates.
+accuracy = {"all": [], "proportion": []}
+
+# Voltage recording for excitatory and inhibitory layers.
+exc_voltage_monitor = Monitor(network.layers["Ae"], ["v"], time=int(time / dt))
+inh_voltage_monitor = Monitor(network.layers["Ai"], ["v"], time=int(time / dt))
+network.add_monitor(exc_voltage_monitor, name="exc_voltage")
+network.add_monitor(inh_voltage_monitor, name="inh_voltage")
+
+# Set up monitors for spikes and voltages
+spikes = {}
+for layer in set(network.layers):
+    spikes[layer] = Monitor(
+        network.layers[layer], state_vars=["s"], time=int(time / dt)
     )
+    network.add_monitor(spikes[layer], name="%s_spikes" % layer)
 
-    # Neuron assignments and spike proportions.
-    n_classes = 10
-    assignments = -torch.ones(n_neurons, device=device)
-    proportions = torch.zeros((n_neurons, n_classes), device=device)
-    rates = torch.zeros((n_neurons, n_classes), device=device)
+voltages = {}
+for layer in set(network.layers) - {"X"}:
+    voltages[layer] = Monitor(
+        network.layers[layer], state_vars=["v"], time=int(time / dt)
+    )
+    network.add_monitor(voltages[layer], name="%s_voltages" % layer)
 
-    # Masking
-    mask_dict = dict()
-    if clamp > 0:
-        mask = np.sort(np.random.choice(n_neurons, int(n_neurons * clamp), replace=False))
-        mask_dict["clamp"] = torch.from_numpy(mask)
-        print("Always fired neurons:", mask)
-        c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
-    elif unclamp > 0:
-        mask = np.sort(np.random.choice(n_neurons, int(n_neurons * unclamp), replace=False))
-        mask_dict["unclamp"] = torch.from_numpy(mask)
-        print("Unfired neurons:", mask)
-        c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
-    else:
-        mask = np.arange(0)
-        c_mask = np.arange(n_neurons)
+inpt_ims, inpt_axes = None, None
+spike_ims, spike_axes = None, None
+weights_im = None
+assigns_im = None
+perf_ax = None
+voltage_axes, voltage_ims = None, None
 
-    # Sequence of accuracy estimates.
-    accuracy = {"all": [], "proportion": []}
+spike_record = torch.zeros((update_interval, int(time / dt), n_neurons), device=device)
 
-    # Voltage recording for excitatory and inhibitory layers.
-    exc_voltage_monitor = Monitor(network.layers["Ae"], ["v"], time=int(time / dt))
-    inh_voltage_monitor = Monitor(network.layers["Ai"], ["v"], time=int(time / dt))
-    network.add_monitor(exc_voltage_monitor, name="exc_voltage")
-    network.add_monitor(inh_voltage_monitor, name="inh_voltage")
+inc = int(n_train/batch_size)
+print("\nBegin training.\n")
+start = t()
 
-    # Set up monitors for spikes and voltages
-    spikes = {}
-    for layer in set(network.layers):
-        spikes[layer] = Monitor(
-            network.layers[layer], state_vars=["s"], time=int(time / dt)
-        )
-        network.add_monitor(spikes[layer], name="%s_spikes" % layer)
-
-    voltages = {}
-    for layer in set(network.layers) - {"X"}:
-        voltages[layer] = Monitor(
-            network.layers[layer], state_vars=["v"], time=int(time / dt)
-        )
-        network.add_monitor(voltages[layer], name="%s_voltages" % layer)
-
-    inpt_ims, inpt_axes = None, None
-    spike_ims, spike_axes = None, None
-    weights_im = None
-    assigns_im = None
-    perf_ax = None
-    voltage_axes, voltage_ims = None, None
-
-    spike_record = torch.zeros((update_interval, int(time / dt), n_neurons), device=device)
-
-    inc = int(n_train/batch_size)
-    print("\nBegin training.\n")
-    start = t()
-
+'''
+===========================================================
+TRAINING
+===========================================================
+'''
+    
+if (model_path == None) or (not os.path.exists(model_path)):
     for epoch in range(n_epochs):
         labels = []
 
@@ -342,12 +351,19 @@ else:
 
     if model_path != None:
         network.save(model_path)
+        model_dir = model_path.rsplit("/", 1)[0] if len(model_path.rsplit("/", 1)) == 2 else ""
+        torch.save(assignments, os.path.join(model_dir, "assignments.pt"))
+        torch.save(proportions, os.path.join(model_dir, "proportions.pt"))
 
 '''
 ===========================================================
 TESTING
 ===========================================================
 '''
+if model_path != None and os.path.exists(model_path):
+    model_dir = model_path.rsplit("/", 1)[0] if len(model_path.rsplit("/", 1)) == 2 else ""
+    assignments = torch.load(os.path.join(model_dir, "assignments.pt"), map_location=device)
+    proportions = torch.load(os.path.join(model_dir, "proportions.pt"), map_location=device)
 
 # Load MNIST data.
 test_dataset = MNIST(
@@ -402,16 +418,17 @@ for step, batch in enumerate(tqdm(test_dataloader)):
         print("normal neuron's spikes:", torch.count_nonzero(spike_record[:, :, c_mask]))
 
     # Convert the array of labels into a tensor
-    label_tensor = torch.tensor(batch["label"], device=device)
+    label_tensor = torch.tensor(batch["label"])
 
     # Get network predictions.
     all_activity_pred = all_activity(
-        spikes=spike_record, assignments=assignments, n_labels=n_classes
+        spikes=spike_record.cpu(), assignments=assignments.cpu(), n_labels=n_classes
     )
+
     proportion_pred = proportion_weighting(
-        spikes=spike_record,
-        assignments=assignments,
-        proportions=proportions,
+        spikes=spike_record.cpu(),
+        assignments=assignments.cpu(),
+        proportions=proportions.cpu(),
         n_labels=n_classes,
     )
 
@@ -427,6 +444,4 @@ for step, batch in enumerate(tqdm(test_dataloader)):
 
 print("\nAll activity accuracy: %.4f" % (accuracy["all"] / n_test))
 print("Proportion weighting accuracy: %.4f \n" % (accuracy["proportion"] / n_test))
-
-print("Progress: %d / %d (%.4f seconds)" % (epoch + 1, n_epochs, t() - start))
 print("Testing complete.\n")
