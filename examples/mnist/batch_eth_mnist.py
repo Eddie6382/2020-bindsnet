@@ -213,9 +213,10 @@ start = t()
 MaxAcc = 75
 FLAG = False
 
-def Test(dataloader, network, size:int, Type:str):
-    spike_record = torch.zeros((update_interval, int(time / dt), n_neurons), device=device)
-    accuracy = {"all": 0, "proportion": 0}
+def Test(dataloader, size:int, Type:str):
+    global network
+    SpikeRecord = torch.zeros((update_interval, int(time / dt), n_neurons), device=device)
+    Accuracy = {"all": 0, "proportion": 0}
     network.train(mode=False)
     for step, batch in enumerate(dataloader):
         inputs = {"X": batch["encoded_image"]}
@@ -223,27 +224,28 @@ def Test(dataloader, network, size:int, Type:str):
             inputs = {k: v.cuda() for k, v in inputs.items()}
         network.run(inputs=inputs, time=time, input_time_dim=1, one_step=True, dr=dr_rate)
 
-        spike_record = spikes["Ae"].get("s").permute((1, 0, 2))
+        SpikeRecord = spikes["Ae"].get("s").permute((1, 0, 2))
         label_tensor = torch.tensor(batch["label"])
         all_activity_pred = all_activity(
-            spikes=spike_record.cpu(), assignments=assignments.cpu(), n_labels=n_classes
+            spikes=SpikeRecord.cpu(), assignments=assignments.cpu(), n_labels=n_classes
         )
         proportion_pred = proportion_weighting(
-            spikes=spike_record.cpu(),
+            spikes=SpikeRecord.cpu(),
             assignments=assignments.cpu(),
             proportions=proportions.cpu(),
             n_labels=n_classes,
         )
-        accuracy["all"] += 100*float(torch.sum(label_tensor.long() == all_activity_pred).item())
-        accuracy["proportion"] += 100*float(
+        Accuracy["all"] += 100*float(torch.sum(label_tensor.long() == all_activity_pred).item())
+        Accuracy["proportion"] += 100*float(
             torch.sum(label_tensor.long() == proportion_pred).item()
         )
         network.reset_state_variables()  # Reset state variables.
+    network.train(mode=True)
 
     print("%s Set" % (Type))
-    print("All activity accuracy: %.2f" % (accuracy["all"] / size))
-    print("Proportion weighting accuracy: %.2f \n" % (accuracy["proportion"] / size))
-    return (accuracy["all"] / size), (accuracy["proportion"] / size)
+    print("All activity accuracy: %.2f" % (Accuracy["all"] / size))
+    print("Proportion weighting accuracy: %.2f \n" % (Accuracy["proportion"] / size))
+    return (Accuracy["all"] / size), (Accuracy["proportion"] / size)
 
 '''
 ===========================================================
@@ -324,7 +326,7 @@ if (model_path == None) or (not os.path.exists(model_path)):
 
                 labels = []
                 
-                _, acc = Test(dataloader=valid_dataloader, network=network, size=split,Type="Validation")
+                _, acc = Test(dataloader=valid_dataloader, size=split,Type="Validation")
                 if acc > MaxAcc:
                     MaxAcc = acc
                     if model_path != None:
