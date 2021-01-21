@@ -141,7 +141,7 @@ dataset = MNIST(
 
 # Split dataset into two part, training set and validation set
 indices = list(range(len(dataset)))
-split = int(len(dataset)/20)
+split = int(len(dataset)/12)
 random.shuffle(indices)
 train_sampler = torch.utils.data.sampler.SubsetRandomSampler(indices[split:])
 valid_sampler = torch.utils.data.sampler.SubsetRandomSampler(indices[:split])
@@ -327,8 +327,9 @@ if (model_path == None) or (not os.path.exists(model_path)):
                 labels = []
                 
                 _, acc = Test(dataloader=valid_dataloader, size=split,Type="Validation")
-                if acc > MaxAcc:
+                if acc > MaxAcc and acc < accuracy["proportion"][-1]:
                     MaxAcc = acc
+                    FLAG = True
                     if model_path != None:
                         print("----------   SAVE MODEL   ----------")
                         network.save(model_path)
@@ -394,6 +395,13 @@ if (model_path == None) or (not os.path.exists(model_path)):
                 plt.pause(1e-8)
 
             network.reset_state_variables()  # Reset state variables.
+    
+    if model_path != None and FLAG == False:
+        print("----------   SAVE MODEL   ----------")
+        network.save(model_path)
+        model_dir = model_path.rsplit("/", 1)[0] if len(model_path.rsplit("/", 1)) == 2 else ""
+        torch.save(assignments, os.path.join(model_dir, "assignments.pt"))
+        torch.save(proportions, os.path.join(model_dir, "proportions.pt"))
 
     print("Progress: %d / %d (%.4f seconds)" % (epoch + 1, n_epochs, t() - start))
     print("Training complete.\n")
