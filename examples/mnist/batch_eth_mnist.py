@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 
 from torchvision import transforms
 from tqdm import tqdm
+import random
 
 from time import time as t
 
@@ -138,6 +139,14 @@ dataset = MNIST(
     ),
 )
 
+# Split dataset into two part, training set and validation set
+indices = list(range(len(dataset)))
+split = int(len(dataset)/20)
+random.shuffle(indices)
+train_sampler = torch.utils.data.sampler.SubsetRandomSampler(indices[split:])
+valid_sampler = torch.utils.data.sampler.SubsetRandomSampler(indices[:split])
+
+
 # Neuron assignments and spike proportions.
 n_classes = 10
 assignments = -torch.ones(n_neurons, device=device)
@@ -201,6 +210,40 @@ spike_record = torch.zeros((update_interval, int(time / dt), n_neurons), device=
 inc = int(n_train/batch_size)
 print("\nBegin training.\n")
 start = t()
+MaxAcc = 75
+FLAG = False
+
+def Test(dataloader, network, size:int, Type:str):
+    spike_record = torch.zeros((update_interval, int(time / dt), n_neurons), device=device)
+    accuracy = {"all": 0, "proportion": 0}
+    network.train(mode=False)
+    for step, batch in enumerate(dataloader):
+        inputs = {"X": batch["encoded_image"]}
+        if gpu:
+            inputs = {k: v.cuda() for k, v in inputs.items()}
+        network.run(inputs=inputs, time=time, input_time_dim=1, one_step=True, dr=dr_rate)
+
+        spike_record = spikes["Ae"].get("s").permute((1, 0, 2))
+        label_tensor = torch.tensor(batch["label"])
+        all_activity_pred = all_activity(
+            spikes=spike_record.cpu(), assignments=assignments.cpu(), n_labels=n_classes
+        )
+        proportion_pred = proportion_weighting(
+            spikes=spike_record.cpu(),
+            assignments=assignments.cpu(),
+            proportions=proportions.cpu(),
+            n_labels=n_classes,
+        )
+        accuracy["all"] += 100*float(torch.sum(label_tensor.long() == all_activity_pred).item())
+        accuracy["proportion"] += 100*float(
+            torch.sum(label_tensor.long() == proportion_pred).item()
+        )
+        network.reset_state_variables()  # Reset state variables.
+
+    print("%s Set" % (Type))
+    print("All activity accuracy: %.2f" % (accuracy["all"] / size))
+    print("Proportion weighting accuracy: %.2f \n" % (accuracy["proportion"] / size))
+    return (accuracy["all"] / size), (accuracy["proportion"] / size)
 
 '''
 ===========================================================
@@ -220,7 +263,14 @@ if (model_path == None) or (not os.path.exists(model_path)):
         train_dataloader = DataLoader(
             dataset,
             batch_size=batch_size,
-            shuffle=True,
+            sampler=train_sampler,
+            num_workers=n_workers,
+            pin_memory=gpu,
+        )
+        valid_dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            sampler=valid_sampler,
             num_workers=n_workers,
             pin_memory=gpu,
         )
@@ -260,23 +310,9 @@ if (model_path == None) or (not os.path.exists(model_path)):
                     / len(label_tensor)
                 )
 
-                print(
-                    "\nAll activity accuracy: %.2f (last), %.2f (average), %.2f (best)"
-                    % (
-                        accuracy["all"][-1],
-                        np.mean(accuracy["all"]),
-                        np.max(accuracy["all"]),
-                    )
-                )
-                print(
-                    "Proportion weighting accuracy: %.2f (last), %.2f (average), %.2f"
-                    " (best)\n"
-                    % (
-                        accuracy["proportion"][-1],
-                        np.mean(accuracy["proportion"]),
-                        np.max(accuracy["proportion"]),
-                    )
-                )
+                print("\nTraining Set")
+                print("All activity accuracy: %.2f " % (accuracy["all"][-1]))
+                print("Proportion weighting accuracy: %.2f \n" % (accuracy["proportion"][-1]))
 
                 # Assign labels to excitatory layer neurons.
                 assignments, proportions, rates = assign_labels(
@@ -287,6 +323,16 @@ if (model_path == None) or (not os.path.exists(model_path)):
                 )
 
                 labels = []
+                
+                _, acc = Test(dataloader=valid_dataloader, network=network, size=split,Type="Validation")
+                if acc > MaxAcc:
+                    MaxAcc = acc
+                    if model_path != None:
+                        print("----------   SAVE MODEL   ----------")
+                        network.save(model_path)
+                        model_dir = model_path.rsplit("/", 1)[0] if len(model_path.rsplit("/", 1)) == 2 else ""
+                        torch.save(assignments, os.path.join(model_dir, "assignments.pt"))
+                        torch.save(proportions, os.path.join(model_dir, "proportions.pt"))
 
             # mask on connections
             mask_e = torch.zeros(n_neurons, device=device)
@@ -301,7 +347,7 @@ if (model_path == None) or (not os.path.exists(model_path)):
 
             # Run the network on the input.
             # network.run(inputs=inputs, time=time, input_time_dim=1, neuron_fault=mask_dict, name={"Ae"}, isReturnSpike=True)
-            network.run(inputs=inputs, time=time, input_time_dim=1, dr_mask=masks, training=True, dr=dr_rate, one_step=True)
+            network.run(inputs=inputs, time=time, input_time_dim=1, dr_mask=masks, dr=dr_rate, one_step=True)
             if (not step % update_steps) and (step > 0) and (mask_dict != dict()):
                 print("input shape:", inputs["X"].shape)
                 print("spike_record shape:", spike_record.shape)
@@ -350,18 +396,13 @@ if (model_path == None) or (not os.path.exists(model_path)):
     print("Progress: %d / %d (%.4f seconds)" % (epoch + 1, n_epochs, t() - start))
     print("Training complete.\n")
 
-    if model_path != None:
-        network.save(model_path)
-        model_dir = model_path.rsplit("/", 1)[0] if len(model_path.rsplit("/", 1)) == 2 else ""
-        torch.save(assignments, os.path.join(model_dir, "assignments.pt"))
-        torch.save(proportions, os.path.join(model_dir, "proportions.pt"))
-
 '''
 ===========================================================
 TESTING
 ===========================================================
 '''
 if model_path != None and os.path.exists(model_path):
+    print("----------   LOAD MODEL   ----------")
     model_dir = model_path.rsplit("/", 1)[0] if len(model_path.rsplit("/", 1)) == 2 else ""
     assignments = torch.load(os.path.join(model_dir, "assignments.pt"), map_location=device)
     proportions = torch.load(os.path.join(model_dir, "proportions.pt"), map_location=device)
@@ -396,27 +437,17 @@ network.train(mode=False)
 start = t()
 
 # To see the neuron is correctly clamped
-
-pbar = tqdm(total=n_test)
 for step, batch in enumerate(tqdm(test_dataloader)):
-    if step > n_test:
-        break
     # Get next input sample.
     inputs = {"X": batch["encoded_image"]}
     if gpu:
         inputs = {k: v.cuda() for k, v in inputs.items()}
 
     # Run the network on the input.
-    network.run(inputs=inputs, time=time, input_time_dim=1,one_step = True,neuron_fault=mask_dict, name={"Ae"},training = True, dr=dr_rate)
+    network.run(inputs=inputs, time=time, input_time_dim=1,one_step = True,neuron_fault=mask_dict, name={"Ae"}, dr=dr_rate)
 
     # Add to spikes recording.
     spike_record = spikes["Ae"].get("s").permute((1, 0, 2))
-
-    if (not step % 1000) and (step > 0) and (mask_dict != dict()):
-        print("input shape:", inputs["X"].shape)
-        print("spike_record shape:", spike_record.shape)
-        print("abnormal neuron's spikes:", torch.count_nonzero(spike_record[:, :, mask]))
-        print("normal neuron's spikes:", torch.count_nonzero(spike_record[:, :, c_mask]))
 
     # Convert the array of labels into a tensor
     label_tensor = torch.tensor(batch["label"])
@@ -440,8 +471,6 @@ for step, batch in enumerate(tqdm(test_dataloader)):
     )
 
     network.reset_state_variables()  # Reset state variables.
-    pbar.set_description_str("Test progress: ")
-    pbar.update()
 
 print("\nAll activity accuracy: %.4f" % (accuracy["all"] / n_test))
 print("Proportion weighting accuracy: %.4f \n" % (accuracy["proportion"] / n_test))
