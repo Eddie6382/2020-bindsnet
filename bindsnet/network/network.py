@@ -297,7 +297,6 @@ class Network(torch.nn.Module):
         c_masks = kwargs.get("connection_fault", {})
         injects_v = kwargs.get("injects_v", {})
         name = kwargs.get("name", {})
-        isReturnSpike = kwargs.get("isRetrunSpike", False)
 
         # Compute reward.
         if self.reward_fn is not None:
