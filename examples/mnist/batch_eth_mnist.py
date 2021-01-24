@@ -27,6 +27,10 @@ from bindsnet.analysis.plotting import (
     plot_assignments,
     plot_voltages,
 )
+from bindsnet.analysis.visualization import (
+    plot_spike_trains_for_example,
+    summary
+)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", type=int, default=0)
@@ -367,7 +371,7 @@ if (model_path == None) or (not os.path.exists(model_path)):
             inh_voltages = inh_voltage_monitor.get("v")
 
             # Optionally plot various simulation information.
-            if plot and step > 0 and step % update_steps == 0:
+            if False and step % update_steps == 0:
                 image = batch["image"][:, 0].view(28, 28)
                 inpt = inputs["X"][:, 0].view(time, 784).sum(0).view(28, 28)
                 input_exc_weights = network.connections[("X", "Ae")].w
@@ -446,7 +450,9 @@ network.train(mode=False)
 start = t()
 
 # To see the neuron is correctly clamped
+test_spike = torch.zeros((len(test_dataset), int(time / dt), n_neurons), device=device)
 for step, batch in enumerate(tqdm(test_dataloader)):
+    if step > 20: break
     # Get next input sample.
     inputs = {"X": batch["encoded_image"]}
     if gpu:
@@ -457,6 +463,7 @@ for step, batch in enumerate(tqdm(test_dataloader)):
 
     # Add to spikes recording.
     spike_record = spikes["Ae"].get("s").permute((1, 0, 2))
+    test_spike[(step * batch_size) : (step * batch_size) + spike_record.size(0)] = spike_record
 
     # Convert the array of labels into a tensor
     label_tensor = torch.tensor(batch["label"])
@@ -481,6 +488,13 @@ for step, batch in enumerate(tqdm(test_dataloader)):
 
     network.reset_state_variables()  # Reset state variables.
 
+if plot:
+    spikes_ = {"Ae": test_spike[0:500]}
+    print(test_spike.shape)
+    spike_ims, spike_axes = plot_spikes(spikes_, ims=spike_ims, axes=spike_axes, save="spikes.png")
+    # print(assignments)
+
 print("\nAll activity accuracy: %.4f" % (accuracy["all"] / n_test))
 print("Proportion weighting accuracy: %.4f \n" % (accuracy["proportion"] / n_test))
 print("Testing complete.\n")
+print(summary(network))

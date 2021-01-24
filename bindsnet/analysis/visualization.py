@@ -174,6 +174,7 @@ def summary(net) -> str:
         for c in net.connections:
             if c[0] == l:
                 w_size = 1
+                w_sum = torch.sum(net.connections[c[0], c[1]].w.data).item()
                 for dim in net.connections[c[0], c[1]].w.shape:
                     w_size *= dim
                 out += (
@@ -182,6 +183,11 @@ def summary(net) -> str:
                     + "' by "
                     + "{:,}".format(w_size)
                     + " synapses\n"
+                )
+                out += (
+                    "       \033[94m·sum of weight of synapses '"
+                    + "{:,.2f}".format(w_sum)
+                    + "\n"
                 )
                 total_weights += w_size
                 if net.layers[c[1]].learning:

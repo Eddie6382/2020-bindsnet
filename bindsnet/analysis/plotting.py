@@ -73,6 +73,7 @@ def plot_spikes(
     ims: Optional[List[PathCollection]] = None,
     axes: Optional[Union[Axes, List[Axes]]] = None,
     figsize: Tuple[float, float] = (8.0, 4.5),
+    save: Optional[str] = None,
 ) -> Tuple[List[AxesImage], List[Axes]]:
     # language=rst
     """
@@ -169,7 +170,8 @@ def plot_spikes(
                 "%s spikes for neurons (%d - %d) from t = %d to %d " % args
             )
 
-    plt.draw()
+    if save is not None:
+        plt.savefig(save)
 
     return ims, axes
 
