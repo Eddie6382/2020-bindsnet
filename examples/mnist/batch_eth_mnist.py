@@ -85,7 +85,7 @@ thres_ratio = args.thres_ratio
 
 update_interval = update_steps * batch_size
 print("\n\n =========     PARAM     =========")
-print("n_neurons:", n_neurons, ", clamp:", clamp, ", unclamp:", unclamp, ", dr_rate:", dr_rate)
+print("n_neurons:", n_neurons, ", clamp:", clamp, ", unclamp:", unclamp, ", dr_rate:", dr_rate, "thres_ratio:", thres_ratio)
 
 device = "cpu"
 # Sets up Gpu use
@@ -349,7 +349,6 @@ if (model_path == None) or (not os.path.exists(model_path)):
             labels.extend(batch["label"].tolist())
 
             # Run the network on the input.
-            # network.run(inputs=inputs, time=time, input_time_dim=1, neuron_fault=mask_dict, name={"Ae"}, isReturnSpike=True)
             network.run(inputs=inputs, time=time, input_time_dim=1, dr_mask=masks, dr=dr_rate, one_step=True)
             if (not step % update_steps) and (step > 0) and (mask_dict != dict()):
                 print("input shape:", inputs["X"].shape)
