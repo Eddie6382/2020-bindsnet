@@ -492,7 +492,9 @@ if plot:
     spikes_ = {"Ae": test_spike[0:500]}
     print(test_spike.shape)
     spike_ims, spike_axes = plot_spikes(spikes_, ims=spike_ims, axes=spike_axes, save="spikes.png")
-    # print(assignments)
+    if mask_dict != {}:
+        affected = set(assignments[mask_dict["v_drop"]].tolist())
+        print(affected)
 
 print("\nAll activity accuracy: %.4f" % (accuracy["all"] / n_test))
 print("Proportion weighting accuracy: %.4f \n" % (accuracy["proportion"] / n_test))
