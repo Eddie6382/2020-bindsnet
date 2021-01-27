@@ -174,7 +174,8 @@ def summary(net) -> str:
         for c in net.connections:
             if c[0] == l:
                 w_size = 1
-                w_sum = torch.sum(net.connections[c[0], c[1]].w.data).item()
+                w_mean = torch.mean(net.connections[c[0], c[1]].w.data).item()
+                w_std = torch.std(net.connections[c[0], c[1]].w.data).item()
                 for dim in net.connections[c[0], c[1]].w.shape:
                     w_size *= dim
                 out += (
@@ -185,10 +186,15 @@ def summary(net) -> str:
                     + " synapses\n"
                 )
                 out += (
-                    "       \033[94m·sum of weight of synapses '"
-                    + "{:,.2f}".format(w_sum)
+                    "       \033[94m·mean and std of weight of synapses "
+                    + "{:,.3f}, {:,.3f}".format(w_mean, w_std)
                     + "\n"
                 )
+                if l == "Ae":
+                    out += (
+                        "       \033[94m·mean of thres and theta voltage {:,.2f}, {:,.2f}".
+                        format(torch.mean(net.layers[l].thresh), torch.mean(net.layers[l].theta))
+                    )
                 total_weights += w_size
                 if net.layers[c[1]].learning:
                     total_trainable_weights += w_size

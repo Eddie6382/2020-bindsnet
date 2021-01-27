@@ -183,7 +183,6 @@ class Connection(AbstractConnection):
         else:
             fill_0 =  self.w.data.masked_fill_(mask,0) 
 
-        #a= torch.tensor(a,device="cuda")
         # self.b = torch.zeros_like(s.float().view(s.size(0), -1) @ fill_0) if self.b == None else self.b
         post = s.float().view(s.size(0), -1) @ fill_0 + self.b
         self.w.data.add_(saved)

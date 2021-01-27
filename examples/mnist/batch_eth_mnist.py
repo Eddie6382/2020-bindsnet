@@ -26,6 +26,7 @@ from bindsnet.analysis.plotting import (
     plot_performance,
     plot_assignments,
     plot_voltages,
+    plot_confusion_matrix
 )
 from bindsnet.analysis.visualization import (
     plot_spike_trains_for_example,
@@ -58,6 +59,7 @@ parser.add_argument("--thres_ratio", type=float, default=0)
 parser.add_argument("--dr_rate", type=float, default=0)
 parser.add_argument("--txt", type=int, default=0)
 parser.add_argument("--model_path", type=str, default=None)
+parser.add_argument("--repeat", type=int, default=1)
 parser.set_defaults(plot=False, gpu=False)
 
 args = parser.parse_args()
@@ -86,6 +88,7 @@ dr_rate = args.dr_rate
 txt = args.txt 
 model_path = args.model_path
 thres_ratio = args.thres_ratio
+repeat = args.repeat
 
 update_interval = update_steps * batch_size
 print("\n\n =========     PARAM     =========")
@@ -156,27 +159,6 @@ n_classes = 10
 assignments = -torch.ones(n_neurons, device=device)
 proportions = torch.zeros((n_neurons, n_classes), device=device)
 rates = torch.zeros((n_neurons, n_classes), device=device)
-
-# Masking
-mask_dict = dict()
-if clamp > 0:
-    mask = np.sort(np.random.choice(n_neurons, int(n_neurons * clamp), replace=False))
-    mask_dict["clamp"] = torch.from_numpy(mask)
-    print("Always fired neurons:", mask)
-    c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
-elif unclamp > 0:
-    mask = np.sort(np.random.choice(n_neurons, int(n_neurons * unclamp), replace=False))
-    mask_dict["unclamp"] = torch.from_numpy(mask)
-    print("Unfired neurons:", mask)
-    c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
-elif thres_ratio > 0:
-    mask = np.sort(np.random.choice(n_neurons, int(n_neurons * thres_ratio), replace=False))
-    mask_dict["v_drop"] = torch.from_numpy(mask)
-    print("Threshold voltage drop neurons:", mask)
-    c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
-else:
-    mask = np.arange(0)
-    c_mask = np.arange(n_neurons)
 
 # Sequence of accuracy estimates.
 accuracy = {"all": [], "proportion": []}
@@ -258,6 +240,25 @@ TRAINING
 '''
     
 if (model_path == None) or (not os.path.exists(model_path)):
+    # Masking
+    mask_dict = dict()
+    if clamp > 0:
+        mask = np.sort(np.random.choice(n_neurons, int(n_neurons * clamp), replace=False))
+        mask_dict["clamp"] = torch.from_numpy(mask)
+        c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
+    elif unclamp > 0:
+        mask = np.sort(np.random.choice(n_neurons, int(n_neurons * unclamp), replace=False))
+        mask_dict["unclamp"] = torch.from_numpy(mask)
+        c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
+    elif thres_ratio > 0:
+        mask = np.sort(np.random.choice(n_neurons, int(n_neurons * thres_ratio), replace=False))
+        mask_dict["v_drop"] = torch.from_numpy(mask)
+        c_mask = np.sort(np.setdiff1d(np.arange(n_neurons), mask))
+    else:
+        mask = np.arange(0)
+        c_mask = np.arange(n_neurons)
+
+        
     for epoch in range(n_epochs):
         labels = []
 
@@ -441,62 +442,90 @@ test_dataloader = DataLoader(
     pin_memory=gpu,
 )
 
-# Sequence of accuracy estimates.
-accuracy = {"all": 0, "proportion": 0}
-
 # Train the network.
 print("\nBegin testing\n")
+print("model path:", model_path)
+print(summary(network))
 network.train(mode=False)
 start = t()
 
 # To see the neuron is correctly clamped
 test_spike = torch.zeros((len(test_dataset), int(time / dt), n_neurons), device=device)
-for step, batch in enumerate(tqdm(test_dataloader)):
-    if step > 20: break
-    # Get next input sample.
-    inputs = {"X": batch["encoded_image"]}
-    if gpu:
-        inputs = {k: v.cuda() for k, v in inputs.items()}
+test_label = torch.zeros(len(test_dataset))
+list_acc = {"all":[], "proportion":[]}
 
-    # Run the network on the input.
-    network.run(inputs=inputs, time=time, input_time_dim=1,one_step = True,neuron_fault=mask_dict, name={"Ae"}, dr=dr_rate)
+for i in range(repeat):
+    mask_dict = dict()
+    if clamp > 0:
+        mask = np.sort(np.random.choice(n_neurons, int(n_neurons * clamp), replace=False))
+        mask_dict["clamp"] = torch.from_numpy(mask)
+    elif unclamp > 0:
+        mask = np.sort(np.random.choice(n_neurons, int(n_neurons * unclamp), replace=False))
+        mask_dict["unclamp"] = torch.from_numpy(mask)
+    elif thres_ratio > 0:
+        mask = np.sort(np.random.choice(n_neurons, int(n_neurons * thres_ratio), replace=False))
+        mask_dict["v_drop"] = torch.from_numpy(mask)
 
-    # Add to spikes recording.
-    spike_record = spikes["Ae"].get("s").permute((1, 0, 2))
-    test_spike[(step * batch_size) : (step * batch_size) + spike_record.size(0)] = spike_record
+    # Sequence of accuracy estimates.
+    accuracy = {"all": 0, "proportion": 0}
+    for step, batch in enumerate(tqdm(test_dataloader)):
+        if step > 0:break
+        # Get next input sample.
+        inputs = {"X": batch["encoded_image"]}
+        if gpu:
+            inputs = {k: v.cuda() for k, v in inputs.items()}
 
-    # Convert the array of labels into a tensor
-    label_tensor = torch.tensor(batch["label"])
+        # Run the network on the input.
+        network.run(inputs=inputs, time=time, input_time_dim=1,one_step = True,neuron_fault=mask_dict, name={"Ae"}, dr=dr_rate)
 
-    # Get network predictions.
-    all_activity_pred = all_activity(
-        spikes=spike_record.cpu(), assignments=assignments.cpu(), n_labels=n_classes
-    )
+        # Add to spikes recording.
+        spike_record = spikes["Ae"].get("s").permute((1, 0, 2))
+        test_spike[(step * batch_size) : (step * batch_size) + spike_record.size(0)] = spike_record
 
-    proportion_pred = proportion_weighting(
-        spikes=spike_record.cpu(),
-        assignments=assignments.cpu(),
-        proportions=proportions.cpu(),
-        n_labels=n_classes,
-    )
+        # Convert the array of test_label into a tensor
+        label_tensor = torch.tensor(batch["label"])
+        test_label[(step * batch_size) : (step * batch_size) + label_tensor.size(0)] = label_tensor
 
-    # Compute network accuracy according to available classification strategies.
-    accuracy["all"] += float(torch.sum(label_tensor.long() == all_activity_pred).item())
-    accuracy["proportion"] += float(
-        torch.sum(label_tensor.long() == proportion_pred).item()
-    )
+        # Get network predictions.
+        all_activity_pred = all_activity(
+            spikes=spike_record.cpu(), assignments=assignments.cpu(), n_labels=n_classes
+        )
 
-    network.reset_state_variables()  # Reset state variables.
+        proportion_pred = proportion_weighting(
+            spikes=spike_record.cpu(),
+            assignments=assignments.cpu(),
+            proportions=proportions.cpu(),
+            n_labels=n_classes,
+        )
+
+        # Compute network accuracy according to available classification strategies.
+        accuracy["all"] += float(torch.sum(label_tensor.long() == all_activity_pred).item())
+        accuracy["proportion"] += float(
+            torch.sum(label_tensor.long() == proportion_pred).item()
+        )
+
+        network.reset_state_variables()  # Reset state variables.
+
+    list_acc["all"].append(accuracy["all"] / n_test)
+    list_acc["proportion"].append(accuracy["proportion"] / n_test)
 
 if plot:
     spikes_ = {"Ae": test_spike[0:500]}
-    print(test_spike.shape)
-    spike_ims, spike_axes = plot_spikes(spikes_, ims=spike_ims, axes=spike_axes, save="spikes.png")
+    plot_spikes(spikes_, 
+        save=os.path.join(model_dir, "spikes{}.png".format(dr_rate)), 
+        title='Spike-Timestep Graph: Input size 500')
     if mask_dict != {}:
         affected = set(assignments[mask_dict["v_drop"]].tolist())
-        print(affected)
+        print("Affected label:", affected)
+    matrix = plot_confusion_matrix(labels=test_label.cpu(), spikes=test_spike.cpu(), 
+        assignments=assignments.cpu(),
+        n_labels=n_classes, 
+        save=os.path.join(model_dir, "confusion{}.jpg".format(thres_ratio)))
+    print(matrix)
 
-print("\nAll activity accuracy: %.4f" % (accuracy["all"] / n_test))
-print("Proportion weighting accuracy: %.4f \n" % (accuracy["proportion"] / n_test))
+print("\nAll activity accuracy: %.4f, std: %.6f" % (np.mean(np.array(list_acc["all"])), 
+                                                    np.std(np.array(list_acc["all"]))))
+print("Proportion weighting accuracy: %.4f, std: %.6f\n" % (np.mean(np.array(list_acc["proportion"])), 
+                                                    np.std(np.array(list_acc["proportion"]))))
 print("Testing complete.\n")
-print(summary(network))
+

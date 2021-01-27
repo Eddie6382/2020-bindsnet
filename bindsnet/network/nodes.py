@@ -962,7 +962,8 @@ class DiehlAndCookNodes(Nodes):
         unclamp = n_masks.get("unclamp", None)
         v_drop = n_masks.get("v_drop", [])
         thres_mask = torch.ones_like(self.theta)
-        thres_mask[v_drop] = 0.5
+        # thres_mask let thres voltage drop from -52 to -60
+        thres_mask[v_drop] = 0.6
 
         # Decay voltages and adaptive thresholds.
         self.v = self.decay * (self.v - self.rest) + self.rest
@@ -976,7 +977,7 @@ class DiehlAndCookNodes(Nodes):
         self.refrac_count -= self.dt
 
         # Check for spiking neurons also handling always fired or always unfired. dim is the same
-        self.s = self.v >= torch.mul(self.thresh + self.theta, thres_mask)
+        self.s = self.v >= self.thresh + torch.mul(self.theta, thres_mask)
 
         if clamp is not None:
             self.s[:, clamp] = 1

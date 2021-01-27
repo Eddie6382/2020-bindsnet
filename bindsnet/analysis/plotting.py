@@ -8,10 +8,115 @@ from torch.nn.modules.utils import _pair
 from matplotlib.collections import PathCollection
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from typing import Tuple, List, Optional, Sized, Dict, Union
+from sklearn.metrics import confusion_matrix
+import seaborn as sn
+import pandas as pd
 
 from ..utils import reshape_locally_connected_weights, reshape_conv2d_weights
 
 plt.ion()
+
+def plot_confusion_matrix(
+    labels: torch.tensor, spikes: torch.Tensor, assignments: torch.Tensor, n_labels: int, save: str,
+    **kwargs
+) -> np.array:
+    """
+    plot confusion matrix, i is input, j is triggered labels of neuron corresponding
+    to the input.
+    :param spikes: Binary tensor of shape ``(n_samples, time, n_neurons)`` of a layer's
+        spiking activity.
+    :param assignments: A vector of shape ``(n_neurons,)`` of neuron label assignments.
+    :param n_labels: The number of target labels in the data.
+    :return np.array: Confusion matrix whose i-th row and j-th column entry indicates the
+        number of samples with true label being i-th class and predicted label being j-th class.
+    """
+    affected = kwargs.get("affected", None)
+    n_samples = spikes.size(0)
+    # Sum over time dimension (spike ordering doesn't matter).
+    spikes = spikes.sum(1)
+
+    rates = torch.zeros((n_samples, n_labels), device=spikes.device)
+    for i in range(n_labels):
+        # Count the number of neurons with this label assignment.
+        n_assigns = torch.sum(assignments == i).float()
+        if n_assigns > 0:
+            # Get indices of samples with this label.
+            indices = torch.nonzero(assignments == i).view(-1)
+            # Compute layer-wise firing rate for this label.
+            rates[:, i] = torch.sum(spikes[:, indices], 1) / n_assigns
+
+    # Predictions are arg-max of layer-wise firing rates.
+    preds = torch.sort(rates, dim=1, descending=True)[1][:, 0]
+
+    matrix = confusion_matrix(labels.int().tolist(), preds.tolist())
+    digit = [str(i) for i in range(n_labels)]
+
+    df_cm = pd.DataFrame(matrix, digit, digit)
+    sn.set(font_scale=0.7) # for label size
+    sn.heatmap(df_cm, annot=True, annot_kws={"size": 10},fmt='g',cmap='Blues') # font size
+
+    x_label = "Predicted Number"
+    if affected != None:
+        x_label += "\naffected label:"
+        for i in affected:
+            x_label += " {%s},".format(i)
+    
+    plt.xlabel(x_label)
+    plt.ylabel("True Number")
+    plt.title(None)
+    plt.tight_layout()
+    plt.savefig(save) 
+
+    return matrix
+
+def plot_spikes(
+    spikes: Dict[str, torch.Tensor],
+    time: Optional[Tuple[int, int]] = None,
+    n_neurons: Optional[Dict[str, Tuple[int, int]]] = None,
+    figsize: Tuple[float, float] = (16, 8),
+    save: Optional[str] = None,
+    title: str = None,
+):
+    n_subplots = len(spikes.keys())
+    if n_neurons is None:
+        n_neurons = {}
+
+    spikes = {k: v.view(v.size(0), v.size(1), -1) for (k, v) in spikes.items()}
+    if time == None:
+        # Set it for entire duration
+        for key in spikes.keys():
+            time = (0, spikes[key].shape[1]) 
+            break
+
+    for key, val in spikes.items():
+        if key not in n_neurons.keys():
+            # find # of neurons of each layer
+            n_neurons[key] = (0, val.shape[2])
+    
+    # fig, axes = plt.subplots(n_subplots, 1, figsize=figsize)
+    for i, datum in enumerate(spikes.items()):
+        assert(len(spikes) == 1)
+        spikes = (
+            datum[1][
+                time[0] : time[1], n_neurons[datum[0]][0] : n_neurons[datum[0]][1]
+            ]
+            .detach()
+            .clone()
+            .cpu()
+            .numpy()
+        )
+        spikes = np.sum(spikes, axis=0)
+        x = np.array(spikes.nonzero())[0]
+        y = np.array(spikes.nonzero())[1]
+
+        plt.title(title, fontsize=12)
+        plt.scatter(x, y, alpha=0.8, s=7)
+        plt.xlim([time[0], time[1]])
+        plt.xlabel('Timestep', fontsize=10) 
+        plt.ylabel('Neuron Indices', fontsize=10)
+        plt.tick_params(axis="x", labelsize=10)
+        plt.tick_params(axis="y", labelsize=10)
+        plt.savefig(save)
 
 
 def plot_input(
@@ -66,7 +171,7 @@ def plot_input(
     return axes, ims
 
 
-def plot_spikes(
+def o_plot_spikes(
     spikes: Dict[str, torch.Tensor],
     time: Optional[Tuple[int, int]] = None,
     n_neurons: Optional[Dict[str, Tuple[int, int]]] = None,
@@ -74,6 +179,7 @@ def plot_spikes(
     axes: Optional[Union[Axes, List[Axes]]] = None,
     figsize: Tuple[float, float] = (8.0, 4.5),
     save: Optional[str] = None,
+    title: List[str] = [""],
 ) -> Tuple[List[AxesImage], List[Axes]]:
     # language=rst
     """
@@ -137,16 +243,16 @@ def plot_spikes(
                 time[0],
                 time[1],
             )
-            axes[i].set_title(
-                "%s spikes for neurons (%d - %d) from t = %d to %d " % args
-            )
+            axes[i].set_title(title[i])
         for ax in axes:
             ax.set_aspect("auto")
-
         plt.setp(
-            axes, xticks=[], yticks=[], xlabel="Simulation time", ylabel="Neuron index"
+            axes,  xlabel="Simulation time", ylabel="Neuron index"
         )
         plt.tight_layout()
+        if save is not None:
+            plt.savefig(save)
+        
     else:
         for i, datum in enumerate(spikes.items()):
             spikes = (
@@ -169,9 +275,6 @@ def plot_spikes(
             axes[i].set_title(
                 "%s spikes for neurons (%d - %d) from t = %d to %d " % args
             )
-
-    if save is not None:
-        plt.savefig(save)
 
     return ims, axes
 
