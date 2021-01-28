@@ -229,6 +229,8 @@ class Network(torch.nn.Module):
                     inputs[c[1]] = torch.zeros(
                         self.batch_size, *target.shape, device=target.s.device
                     )
+                # print(c[0], c[1])
+                # print(self.connections[c].w.data)
 
                 # Add to input: source's spikes multiplied by connection weights.
                 inputs[c[1]] += self.connections[c].compute(source.s,mask = mask.get(c,torch.zeros_like(self.connections[c].w).bool()),training = training,dr=dr)

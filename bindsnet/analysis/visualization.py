@@ -193,7 +193,9 @@ def summary(net) -> str:
                 if l == "Ae":
                     out += (
                         "       \033[94m·mean of thres and theta voltage {:,.2f}, {:,.2f}".
-                        format(torch.mean(net.layers[l].thresh), torch.mean(net.layers[l].theta))
+                        format(torch.mean(net.layers[l].thresh), torch.mean(net.layers[l].theta)))
+                    out += ( "\n       \033[94m·std of theta voltage {:,.2f}".
+                        format(torch.std(net.layers[l].theta))
                     )
                 total_weights += w_size
                 if net.layers[c[1]].learning:

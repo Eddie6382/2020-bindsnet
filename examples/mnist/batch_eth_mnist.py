@@ -415,6 +415,7 @@ if (model_path == None) or (not os.path.exists(model_path)):
 TESTING
 ===========================================================
 '''
+model_dir = None
 if model_path != None and os.path.exists(model_path):
     print("----------   LOAD MODEL   ----------")
     model_dir = model_path.rsplit("/", 1)[0] if len(model_path.rsplit("/", 1)) == 2 else ""
@@ -445,7 +446,7 @@ test_dataloader = DataLoader(
 # Train the network.
 print("\nBegin testing\n")
 print("model path:", model_path)
-print(summary(network))
+# print(summary(network))
 network.train(mode=False)
 start = t()
 
@@ -453,9 +454,9 @@ start = t()
 test_spike = torch.zeros((len(test_dataset), int(time / dt), n_neurons), device=device)
 test_label = torch.zeros(len(test_dataset))
 list_acc = {"all":[], "proportion":[]}
+mask_dict = dict()
 
 for i in range(repeat):
-    mask_dict = dict()
     if clamp > 0:
         mask = np.sort(np.random.choice(n_neurons, int(n_neurons * clamp), replace=False))
         mask_dict["clamp"] = torch.from_numpy(mask)
@@ -469,7 +470,7 @@ for i in range(repeat):
     # Sequence of accuracy estimates.
     accuracy = {"all": 0, "proportion": 0}
     for step, batch in enumerate(tqdm(test_dataloader)):
-        if step > 0:break
+        # if step > 0:break
         # Get next input sample.
         inputs = {"X": batch["encoded_image"]}
         if gpu:
@@ -515,8 +516,9 @@ if plot:
         save=os.path.join(model_dir, "spikes{}.png".format(dr_rate)), 
         title='Spike-Timestep Graph: Input size 500')
     if mask_dict != {}:
-        affected = set(assignments[mask_dict["v_drop"]].tolist())
-        print("Affected label:", affected)
+        if thres_ratio != 0:
+            affected = set(assignments[mask_dict["v_drop"]].tolist())
+            print("Affected label:", affected)
     matrix = plot_confusion_matrix(labels=test_label.cpu(), spikes=test_spike.cpu(), 
         assignments=assignments.cpu(),
         n_labels=n_classes, 
